@@ -16,7 +16,6 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 
 public class CommandHandler extends Handler{
-    private static final int BUFFER_MAX_SIZE = 8*1024;
     private MessageHandler messageHandler;
     private FileHandler fileHandler;
     private LinkTable linkTable;
@@ -40,19 +39,16 @@ public class CommandHandler extends Handler{
         SocketChannel channel = (SocketChannel) key.channel();
         CommandPackage CDP = new CommandPackage();
         try {
-            ByteBuffer buffer = ByteBuffer.allocate(14);
+            ByteBuffer buffer = ByteBuffer.allocate(CommandPackage.HEADER_SIZE);
             while (buffer.hasRemaining()) {
                 if (channel.read(buffer) == -1) {
-                    link.cancel(key);
+                    link.cancel(key, false);
                     return;
                 }
             }
             buffer.flip();
-            CDP.setPackageSize(buffer.getInt());
-            CDP.setWay(buffer.get());
-            CDP.setType(buffer.get());
-            CDP.setTime(buffer.getLong());
-            int dataSize = CDP.getPackageSize() - 14;
+            CDP.setWay(buffer.get()).setType(buffer.get()).setTime(buffer.getLong()).setDataSize(buffer.getInt());
+            int dataSize = CDP.getDataSize();
             if (dataSize > 0) {
                 byte[] data = new byte[dataSize];
                 buffer = ByteBuffer.allocate(Math.min(dataSize, BUFFER_MAX_SIZE));
@@ -74,10 +70,6 @@ public class CommandHandler extends Handler{
             NetLog.debug("接收 {$}", CDP);
 
             switch (CDP.getWay()) {
-                case DataPackage.WAY_HEART_BEAT -> {
-
-                }
-
                 case DataPackage.WAY_TOKEN_VERIFY -> {
                     linkTable.putToken(new String(CDP.getData()));
                     NetLog.info("获得Token");
@@ -97,7 +89,7 @@ public class CommandHandler extends Handler{
                                     }
                                     link.putDataPackage(linkTable.getMessageKey(), new MessagePackage(DataPackage.WAY_TOKEN_VERIFY
                                             , linkTable.getToken().getBytes()));
-                                    linkTable.setMessageLinkState(LinkTable.MESSAGE_VERIFY);
+                                    linkTable.setMessageLinkState(LinkTable.VERIFY);
                                     while (true) {
                                         MessagePackage messagePackage = linkTable.getMessagePackage();
                                         if (messagePackage != null) {
@@ -106,7 +98,7 @@ public class CommandHandler extends Handler{
                                                 link.putDataPackage(messageKey, messagePackage);
                                             }
                                         } else {
-                                            linkTable.setMessageLinkState(LinkTable.MESSAGE_READY);
+                                            linkTable.setMessageLinkState(LinkTable.READY);
                                             return;
                                         }
                                     }
@@ -138,7 +130,7 @@ public class CommandHandler extends Handler{
                             }
                         }
                     } catch (IOException e) {
-                        e.printStackTrace();
+                        NetLog.error(e);
                     }
                 }
 
@@ -147,7 +139,7 @@ public class CommandHandler extends Handler{
                 }
             }
         } catch (IOException e) {
-            link.cancel(key);
+            link.cancel(key, true);
         } finally {
             link.receiveFinish(key);
         }
@@ -156,15 +148,15 @@ public class CommandHandler extends Handler{
     @Override
     public void sendHandle(SelectionKey key, DataPackage dataPackage) {
         CommandPackage CDP = (CommandPackage) dataPackage;
+        SocketChannel channel = (SocketChannel) key.channel();
         try {
-            SocketChannel channel = (SocketChannel) key.channel();
-            ByteBuffer buffer = ByteBuffer.allocate(14);
-            buffer.putInt(CDP.getPackageSize()).put(CDP.getWay()).put(CDP.getType()).putLong(CDP.getTime());
+            ByteBuffer buffer = ByteBuffer.allocate(CommandPackage.HEADER_SIZE);
+            buffer.put(CDP.getWay()).put(CDP.getType()).putLong(CDP.getTime()).putInt(CDP.getDataSize());
             buffer.flip();
             while (buffer.hasRemaining()) {
                 channel.write(buffer);
             }
-            int dataSize = CDP.getPackageSize() - 14;
+            int dataSize = CDP.getDataSize();
             if (dataSize > 0) {
                 buffer = ByteBuffer.allocate(Math.min(dataSize, BUFFER_MAX_SIZE));
                 for (int residue = dataSize, writeCount = 0; residue > 0;residue -= writeCount, writeCount = 0) {
@@ -179,7 +171,7 @@ public class CommandHandler extends Handler{
             NetLog.debug("发送 {$} 成功", CDP);
         } catch (IOException e) {
             NetLog.error("发送 {$} 失败", CDP);
-            link.cancel(key);
+            link.cancel(key, true);
         } finally {
             link.sendFinish(key);
         }

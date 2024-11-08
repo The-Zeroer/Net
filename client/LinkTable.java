@@ -4,25 +4,31 @@ import client.datapackage.FilePackage;
 import client.datapackage.MessagePackage;
 
 import java.nio.channels.SelectionKey;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class LinkTable {
-    private ConcurrentHashMap<String, Object> hashMap;
-    private ConcurrentLinkedQueue<MessagePackage> messageQueue;
-    private ConcurrentLinkedQueue<FilePackage> fileQueue;
+    private final ConcurrentHashMap<String, Object> hashMap;
+    private final ConcurrentLinkedQueue<MessagePackage> messageQueue;
+    private final ConcurrentLinkedQueue<FilePackage> fileQueue;
+    private final ConcurrentHashMap<SelectionKey, Long> lastActivityTime;
     private byte messageLinkState, fileLinkState;
 
     public LinkTable() {
         hashMap = new ConcurrentHashMap<>();
         messageQueue = new ConcurrentLinkedQueue<>();
         fileQueue = new ConcurrentLinkedQueue<>();
-        messageLinkState = MESSAGE_LINK_1;
-        fileLinkState = FILE_LINK_1;
+        lastActivityTime = new ConcurrentHashMap<>();
+        messageLinkState = LINK_1;
+        fileLinkState = LINK_1;
     }
 
     public void putToken(String token) {
         hashMap.put("token", token);
+    }
+    public void removeToken() {
+        hashMap.remove("token");
     }
     public String getToken() {
         return (String) hashMap.get("token");
@@ -30,6 +36,10 @@ public class LinkTable {
 
     public void putCommandKey(SelectionKey commandKey) {
         hashMap.put("commandKey", commandKey);
+    }
+    public void removeCommandKey() {
+        hashMap.remove("commandKey");
+
     }
     public SelectionKey getCommandKey() {
         return (SelectionKey) hashMap.get("commandKey");
@@ -39,7 +49,7 @@ public class LinkTable {
         hashMap.put("messageKey", messageKey);
     }
     public void removeMessageKey() {
-        messageLinkState = MESSAGE_LINK_1;
+        messageLinkState = LINK_1;
         hashMap.remove("messageKey");
     }
     public SelectionKey getMessageKey() {
@@ -50,7 +60,7 @@ public class LinkTable {
         hashMap.put("fileKey", fileKey);
     }
     public void removeFileKey() {
-        fileLinkState = FILE_LINK_1;
+        fileLinkState = LINK_1;
         hashMap.remove("fileKey");
     }
     public SelectionKey getFileKey() {
@@ -89,17 +99,22 @@ public class LinkTable {
         return fileLinkState;
     }
 
-    // 未连接
-    public static final byte MESSAGE_LINK_1 = 1;
-    // 连接中
-    public static final byte MESSAGE_LINK_2 = 2;
-    // 已验证
-    public static final byte MESSAGE_VERIFY = 3;
-    // 已就绪
-    public static final byte MESSAGE_READY = 4;
+    public void updateLastActivityTime(SelectionKey key) {
+        lastActivityTime.put(key, System.currentTimeMillis());
+    }
+    public Set<Map.Entry<SelectionKey, Long>> getLastActivityTime() {
+        return lastActivityTime.entrySet();
+    }
+    public void removeLastActivityTime(SelectionKey key) {
+        lastActivityTime.remove(key);
+    }
 
-    public static final byte FILE_LINK_1 = 11;
-    public static final byte FILE_LINK_2 = 12;
-    public static final byte FILE_VERIFY = 13;
-    public static final byte FILE_READY = 14;
+    // 未连接
+    public static final byte LINK_1 = 1;
+    // 连接中
+    public static final byte LINK_2 = 2;
+    // 已验证
+    public static final byte VERIFY = 3;
+    // 已就绪
+    public static final byte READY = 4;
 }

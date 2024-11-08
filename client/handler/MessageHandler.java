@@ -11,7 +11,6 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 
 public class MessageHandler extends Handler{
-    private static final int BUFFER_MAX_SIZE = 8*1024;
 
     public MessageHandler(Link link) {
         super(link);
@@ -25,13 +24,13 @@ public class MessageHandler extends Handler{
             ByteBuffer buffer = ByteBuffer.allocate(14);
             while (buffer.hasRemaining()) {
                 if (channel.read(buffer) == -1) {
-                    link.cancel(key);
+                    link.cancel(key, false);
                     return;
                 }
             }
             buffer.flip();
-            MDP.setPackageSize(buffer.getInt()).setWay(buffer.get()).setType(buffer.get()).setTime(buffer.getLong());
-            int dataSize = MDP.getPackageSize() - 14;
+            MDP.setDataSize(buffer.getInt()).setWay(buffer.get()).setType(buffer.get()).setTime(buffer.getLong());
+            int dataSize = MDP.getDataSize();
             if (dataSize > 0) {
                 byte[] data = new byte[dataSize];
                 buffer = ByteBuffer.allocate(Math.min(dataSize, BUFFER_MAX_SIZE));
@@ -54,7 +53,7 @@ public class MessageHandler extends Handler{
 
             link.addDataPackage(MDP);
         } catch (IOException e) {
-            link.cancel(key);
+            link.cancel(key, true);
         } finally {
             link.receiveFinish(key);
         }
@@ -66,12 +65,12 @@ public class MessageHandler extends Handler{
         try {
             SocketChannel channel = (SocketChannel) key.channel();
             ByteBuffer buffer = ByteBuffer.allocate(14);
-            buffer.putInt(MDP.getPackageSize()).put(MDP.getWay()).put(MDP.getType()).putLong(MDP.getTime());
+            buffer.put(MDP.getWay()).put(MDP.getType()).putLong(MDP.getTime()).putInt(MDP.getDataSize());
             buffer.flip();
             while (buffer.hasRemaining()) {
                 channel.write(buffer);
             }
-            int dataSize = MDP.getPackageSize() - 14;
+            int dataSize = MDP.getDataSize();
             if (dataSize > 0) {
                 buffer = ByteBuffer.allocate(Math.min(dataSize, BUFFER_MAX_SIZE));
                 for (int residue = dataSize, writeCount = 0; residue > 0;residue -= writeCount, writeCount = 0) {
@@ -86,7 +85,7 @@ public class MessageHandler extends Handler{
             NetLog.debug("发送 {$} 成功", MDP);
         } catch (IOException e) {
             NetLog.error("发送 {$} 失败", MDP);
-            link.cancel(key);
+            link.cancel(key, true);
         } finally {
             link.sendFinish(key);
         }

@@ -1,24 +1,20 @@
 package client.datapackage;
 
 import java.nio.channels.SelectionKey;
+import java.text.SimpleDateFormat;
 
 public abstract class DataPackage {
-    protected int packageSize;
+    protected static final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
+    public static final int HEADER_SIZE = 14;
+
     protected byte way;
     protected byte type;
     protected long time;
-
+    protected int dataSize;
     protected byte[] data;
 
     protected SelectionKey key;
 
-    public int getPackageSize() {
-        return packageSize;
-    }
-    public DataPackage setPackageSize(int packageSize) {
-        this.packageSize = packageSize;
-        return this;
-    }
     public byte getWay() {
         return way;
     }
@@ -40,6 +36,13 @@ public abstract class DataPackage {
         this.time = time;
         return this;
     }
+    public int getDataSize() {
+        return dataSize;
+    }
+    public DataPackage setDataSize(int dataSize) {
+        this.dataSize = dataSize;
+        return this;
+    }
     public byte[] getData() {
         return data;
     }
@@ -48,16 +51,17 @@ public abstract class DataPackage {
         return this;
     }
 
-    public SelectionKey getSelectionKey() {
-        return key;
-    }
-    public void setSelectionKey(SelectionKey key) {
-        this.key = key;
-    }
-
     @Override
     public String toString() {
-        return getClass().getSimpleName() + " [packageSize=" + packageSize + ", way=" + way + ", type=" + type + ", time=" + time + "]";
+        return getClass().getSimpleName()+ " [way=" + way + ", type=" + type + ", time=" + dateFormat.format(time)
+                + " ,dataSize=" + formatBytes(dataSize) + "]";
+    }
+
+    public static String formatBytes(long bytes) {
+        if (bytes <= 0) return "0 B";
+        String[] units = new String[]{"B", "KB", "MB", "GB", "TB"};
+        int idx = (int) (Math.log(bytes) / Math.log(1024));
+        return String.format("%.2f %s", bytes / Math.pow(1024, idx), units[idx]);
     }
 
     //注册

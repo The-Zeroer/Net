@@ -21,21 +21,21 @@ public class MessageLink extends Link {
         SocketChannel channel = (SocketChannel) key.channel();
         MessagePackage MDP = new MessagePackage();
         try {
-            ByteBuffer buffer = ByteBuffer.allocate(14);
+            ByteBuffer buffer = ByteBuffer.allocate(MessagePackage.HEADER_SIZE);
             while (buffer.hasRemaining()) {
                 if (channel.read(buffer) == -1) {
-                    cancel(key);
+                    canelMessageLink(key);
                     return;
                 }
             }
             buffer.flip();
-            MDP.setPackageSize(buffer.getInt()).setWay(buffer.get()).setType(buffer.get()).setTime(buffer.getLong());
+            MDP.setWay(buffer.get()).setType(buffer.get()).setTime(buffer.getLong()).setDataSize(buffer.getInt());
             if (MDP.getWay() != DataPackage.WAY_TOKEN_VERIFY && linkTable.getTokenByMessageKey(key) == null) {
                 NetLog.warn("连接 [$] (MessageLink) 无Token,已断开", channel.getRemoteAddress());
-                cancel(key);
+                canelMessageLink(key);
                 return;
             }
-            int dataSize = MDP.getPackageSize() - 14;
+            int dataSize = MDP.getDataSize();
             if (dataSize > 0) {
                 byte[] data = new byte[dataSize];
                 buffer = ByteBuffer.allocate(Math.min(dataSize, BUFFER_MAX_SIZE));
@@ -54,41 +54,40 @@ public class MessageLink extends Link {
                 MDP.setData(data);
             }
 
-            MDP.setSelectionKey(key).setUID(linkTable.getUIDByMessageKey(key));
-            NetLog.debug("接收 {$}", MDP);
-
             if (MDP.getWay() == DataPackage.WAY_TOKEN_VERIFY) {
                 String token = new String(MDP.getData());
                 SelectionKey commandKey = linkTable.getCommandKeyByToken(token);
                 SelectionKey messageKey = linkTable.getMessageKeyByToken(token);
                 if (commandKey != null) {
-                    if (messageKey == null) {
-                        String UID = linkTable.getUIDByCommandKey(commandKey);
-                        linkTable.addMessageKey(commandKey, key);
-                        linkTable.setMessageLinkStata(UID, LinkTable.MESSAGE_VERIFY);
-                        while (true) {
-                            MessagePackage messagePackage = linkTable.getMessagePackage(UID);
-                            if (messagePackage != null) {
-                                putDataPackage(key, messagePackage.setSelectionKey(key).setUID(UID));
-                            } else {
-                                linkTable.setMessageLinkStata(UID, LinkTable.MESSAGE_READY);
-                                return;
-                            }
+                    if (messageKey != null) {
+                        NetLog.warn("连接 [$] (MessageLink) 已替换为 [$] ,原连接已断开"
+                                , ((SocketChannel)messageKey.channel()).getRemoteAddress(), channel.getRemoteAddress());
+                        canelMessageLink(messageKey);
+                    }
+                    String UID = linkTable.getUIDByCommandKey(commandKey);
+                    linkTable.addMessageKey(commandKey, key);
+                    linkTable.setMessageLinkStata(UID, LinkTable.VERIFY);
+                    while (true) {
+                        MessagePackage messagePackage = linkTable.getMessagePackage(UID);
+                        if (messagePackage != null) {
+                            putDataPackage(key, messagePackage.setSelectionKey(key).setUID(UID));
+                        } else {
+                            linkTable.setMessageLinkStata(UID, LinkTable.READY);
+                            break;
                         }
-                    } else {
-                        NetLog.warn("连接 [$] (MessageLink) 已断开,与已存在的连接 [$] 冲突"
-                                , channel.getRemoteAddress(), ((SocketChannel)messageKey.channel()).getRemoteAddress());
-                        cancel(key);
                     }
                 } else {
                     NetLog.warn("连接 [$] (MessageLink) 已断开,Token错误", channel.getRemoteAddress());
-                    cancel(key);
+                    canelMessageLink(key);
                 }
             } else {
                 addDataPackage(MDP);
             }
+
+            MDP.setSelectionKey(key).setUID(linkTable.getUIDByMessageKey(key));
+            NetLog.debug("接收 {$}", MDP);
         } catch (IOException e) {
-            cancel(key);
+            canelMessageLink(key);
         } finally {
             receiveFinish(key);
         }
@@ -99,13 +98,13 @@ public class MessageLink extends Link {
         SocketChannel channel = (SocketChannel) key.channel();
         MessagePackage MDP = (MessagePackage) dataPackage;
         try {
-            ByteBuffer buffer = ByteBuffer.allocate(14);
-            buffer.putInt(MDP.getPackageSize()).put(MDP.getWay()).put(MDP.getType()).putLong(MDP.getTime());
+            ByteBuffer buffer = ByteBuffer.allocate(MessagePackage.HEADER_SIZE);
+            buffer.put(MDP.getWay()).put(MDP.getType()).putLong(MDP.getTime()).putInt(MDP.getDataSize());
             buffer.flip();
             while (buffer.hasRemaining()) {
                 channel.write(buffer);
             }
-            int dataSize = MDP.getPackageSize() - 14;
+            int dataSize = MDP.getDataSize();
             if (dataSize > 0) {
                 buffer = ByteBuffer.allocate(Math.min(dataSize, BUFFER_MAX_SIZE));
                 for (int residue = dataSize, writeCount = 0; residue > 0;residue -= writeCount, writeCount = 0) {
@@ -117,12 +116,17 @@ public class MessageLink extends Link {
                     buffer.clear();
                 }
             }
-            NetLog.debug("发送 {$} 成功", MDP);
+            NetLog.debug("发送成功 {$}", MDP);
         } catch (IOException e) {
-            NetLog.error("发送 {$} 失败", MDP);
-            cancel(key);
+            NetLog.error("发送失败 {$}", MDP);
+            canelMessageLink(key);
         } finally {
             sendFinish(key);
         }
+    }
+
+    private void canelMessageLink(SelectionKey key) {
+        linkTable.removeMessageKey(key);
+        cancel(key);
     }
 }

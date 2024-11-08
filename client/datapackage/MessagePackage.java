@@ -15,17 +15,16 @@ public class MessagePackage extends DataPackage {
     }
 
     public MessagePackage(byte way, byte type, byte[] data) {
-        packageSize = 14;
         this.way = way;
         this.type = type;
         this.time = System.currentTimeMillis();
         if (data != null) {
             this.data = data;
-            packageSize += data.length;
+            dataSize += data.length;
         }
     }
 
     public MessagePackage(byte way, byte type, String token, String sender, String receiver, byte[] data) {
-
+        
     }
 }

@@ -5,6 +5,7 @@ import server.log.NetLog;
 import server.util.TokenBucket;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.SocketAddress;
 import java.nio.channels.*;
 import java.util.Iterator;
@@ -24,6 +25,7 @@ public class Accept extends Thread{
         eventQueue = new ConcurrentLinkedQueue<>();
         tokenBucket = new TokenBucket(3000, 1000);
         running = true;
+        NetLog.info("服务器地址 [$]", InetAddress.getLocalHost().getHostAddress());
     }
 
     @Override
@@ -44,7 +46,7 @@ public class Accept extends Thread{
                     tasks.remove();
                 }
             } catch (IOException e) {
-                NetLog.error(e.getMessage());
+                NetLog.error(e);
             }
         }
         NetLog.info("监听结束");
@@ -54,7 +56,6 @@ public class Accept extends Thread{
         Iterator<SelectionKey> keys = selector.selectedKeys().iterator();
         while (keys.hasNext()) {
             SelectionKey key = keys.next();
-            keys.remove();
             if (key.isAcceptable()) {
                 ServerSocketChannel serverSocketChannel = (ServerSocketChannel) key.channel();
                 SocketChannel socketChannel = serverSocketChannel.accept();
@@ -73,6 +74,7 @@ public class Accept extends Thread{
                     NetLog.warn("连接 [$] 已建立,流量超标,已断开", socketAddress);
                 }
             }
+            keys.remove();
         }
     }
 
@@ -84,7 +86,7 @@ public class Accept extends Thread{
                 try {
                     serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
                 } catch (ClosedChannelException e) {
-                    NetLog.error(e.getMessage());
+                    NetLog.error(e);
                 }
             });
             selector.wakeup();

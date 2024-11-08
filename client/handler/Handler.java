@@ -6,6 +6,7 @@ import client.datapackage.DataPackage;
 import java.nio.channels.SelectionKey;
 
 public abstract class Handler {
+    protected static final int BUFFER_MAX_SIZE = 8*1024;
     protected Link link;
 
     public Handler(Link link) {

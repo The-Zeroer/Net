@@ -3,25 +3,23 @@ package server.datapackage;
 import java.io.IOException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
+import java.text.SimpleDateFormat;
 
 public abstract class DataPackage {
-    protected int packageSize;
+    protected static final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
+    public static final int HEADER_SIZE = 14;
+
     protected byte way;
     protected byte type;
     protected long time;
+    protected int dataSize;
 
     protected byte[] data;
 
     protected String UID;
     protected SelectionKey key;
 
-    public int getPackageSize() {
-        return packageSize;
-    }
-    public DataPackage setPackageSize(int packageSize) {
-        this.packageSize = packageSize;
-        return this;
-    }
+
     public byte getWay() {
         return way;
     }
@@ -41,6 +39,13 @@ public abstract class DataPackage {
     }
     public DataPackage setTime(long time) {
         this.time = time;
+        return this;
+    }
+    public int getDataSize() {
+        return dataSize;
+    }
+    public DataPackage setDataSize(int dataSize) {
+        this.dataSize = dataSize;
         return this;
     }
     public byte[] getData() {
@@ -77,7 +82,15 @@ public abstract class DataPackage {
             }
         }
         return getClass().getSimpleName() + " [RemoteAddress=" + address + ", UID=" + UID
-                + ", packageSize=" + packageSize + ", way=" + way + ", type=" + type + ", time=" + time + "]";
+                + ", way=" + way + ", type=" + type + ", time=" + dateFormat.format(time)
+                + ", dataSize=" + formatBytes(dataSize) + "]";
+    }
+
+    public static String formatBytes(long bytes) {
+        if (bytes <= 0) return "0 B";
+        String[] units = new String[]{"B", "KB", "MB", "GB", "TB"};
+        int idx = (int) (Math.log(bytes) / Math.log(1024));
+        return String.format("%.2f %s", bytes / Math.pow(1024, idx), units[idx]);
     }
 
     //注册

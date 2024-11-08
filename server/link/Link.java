@@ -2,6 +2,7 @@ package server.link;
 
 import server.LinkTable;
 import server.datapackage.DataPackage;
+import server.exception.NetException;
 import server.log.NetLog;
 import server.util.TokenBucket;
 
@@ -21,8 +22,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public abstract class Link extends Thread{
     protected final Selector selector;
     protected final LinkTable linkTable;
-    protected final ConcurrentLinkedQueue<Runnable> eventQueue;
     protected final ExecutorService workPool;
+    protected final ConcurrentLinkedQueue<Runnable> eventQueue;
+    private final ConcurrentLinkedQueue<NetException> exceptionQueue;
     protected final ConcurrentHashMap<SelectionKey, AtomicBoolean> sendingStateHashMap;
     protected final ConcurrentHashMap<SelectionKey, Queue<DataPackage>> sendHashMap;
     protected final ConcurrentLinkedQueue<DataPackage> receiveQueue;
@@ -36,6 +38,7 @@ public abstract class Link extends Thread{
         this.linkTable = linkTable;
         selector = Selector.open();
         eventQueue = new ConcurrentLinkedQueue<>();
+        exceptionQueue = new ConcurrentLinkedQueue<>();
         sendingStateHashMap = new ConcurrentHashMap<>();
         sendHashMap = new ConcurrentHashMap<>();
         receiveQueue = new ConcurrentLinkedQueue<>();
@@ -68,12 +71,8 @@ public abstract class Link extends Thread{
                     tasks.next().run();
                     tasks.remove();
                 }
-            } catch (RejectedExecutionException e) {
-                e.printStackTrace();
-                NetLog.error(e.getMessage());
-            } catch (IOException e) {
-                e.printStackTrace();
-                NetLog.error(e.getMessage());
+            } catch (RejectedExecutionException | IOException e) {
+                NetLog.error(e);
             }
         }
     }
@@ -85,6 +84,7 @@ public abstract class Link extends Thread{
             if (tokenBucket.acquire()) {
                 if (key.isReadable()) {
                     key.interestOps(key.interestOps() & ~SelectionKey.OP_READ); // 清除 OP_READ 事件，但保留其他事件
+                    linkTable.updateLastActivityTime(key);
                     workPool.submit(() -> {receiveReceive(key);});
                 } else if (key.isWritable()) {
                     Queue<DataPackage> sendQueue = sendHashMap.get(key);
@@ -93,6 +93,7 @@ public abstract class Link extends Thread{
                         if (dataPackage != null) {
                             if (sendingStateHashMap.get(key).compareAndSet(false, true)) { // 检查并设置状态
                                 key.interestOps(key.interestOps() & ~SelectionKey.OP_WRITE); // 清除 OP_WRITE 事件，但保留其他事件
+                                linkTable.updateLastActivityTime(key);
                                 workPool.submit(() -> {sendReceive(key, dataPackage);});
                             }
                         } else {
@@ -130,60 +131,51 @@ public abstract class Link extends Thread{
             try {
                 SelectionKey key = socketChannel.register(selector, SelectionKey.OP_READ);
                 sendingStateHashMap.put(key, new AtomicBoolean(false));
+                linkTable.updateLastActivityTime(key);
                 NetLog.info("连接 [$] 已注册至 [$] (当前注册数:$)", socketAddress, this.getName(), tempLinkCount);
             } catch (IOException e) {
-                NetLog.error(e.getMessage());
+                NetLog.error(e);
             }
         });
         selector.wakeup();
     }
-    protected synchronized void cancel(SelectionKey key) {
-        cancelSet.add(key);
-        switch (this.getName()) {
-            case "CommandLink" -> {
-                linkTable.cancel(key);
+    public synchronized void cancel(SelectionKey key) {
+        if (sendingStateHashMap.remove(key) != null) {
+            cancelSet.add(key);
+            sendHashMap.remove(key);
+            int tempLinkCount;
+            synchronized (linkLock) {
+                linkCount--;
+                tempLinkCount = linkCount;
             }
-            case "MessageLink" -> {
-                linkTable.removeMessageKey(key);
+            SocketChannel socketChannel = (SocketChannel) key.channel();
+            SocketAddress socketAddress = null;
+            try {
+                socketAddress = socketChannel.getRemoteAddress();
+                socketChannel.close();
+                NetLog.info("连接 [$] 已关闭", socketAddress);
+            } catch (IOException e) {
+                NetLog.error(e);
             }
-            case "FileLink" -> {
-                linkTable.removeFileKey(key);
-            }
+            SocketAddress finalSocketAddress = socketAddress;
+            eventQueue.add(() -> {
+                key.cancel();
+                cancelSet.remove(key);
+                NetLog.info("连接 [$] 已从 [$] 中注销 (当前注册数:$)", finalSocketAddress, this.getName(), tempLinkCount);
+            });
+            selector.wakeup();
         }
-        int tempLinkCount;
-        synchronized (linkLock) {
-            linkCount--;
-            tempLinkCount = linkCount;
-        }
-        SocketChannel socketChannel = (SocketChannel) key.channel();
-        SocketAddress socketAddress = null;
-        try {
-            socketAddress = socketChannel.getRemoteAddress();
-            socketChannel.close();
-            NetLog.info("连接 [$] 已关闭", socketAddress);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        SocketAddress finalSocketAddress = socketAddress;
-        eventQueue.add(() -> {
-            key.cancel();
-            cancelSet.remove(key);
-            NetLog.info("连接 [$] 已从 [$] 中注销 (当前注册数:$)", finalSocketAddress, this.getName(), tempLinkCount);
-        });
-        selector.wakeup();
-        sendingStateHashMap.remove(key);
-        sendHashMap.remove(key);
     }
 
-    public DataPackage getDataPackage(boolean wait){
+    public DataPackage getDataPackage() throws NetException {
         synchronized (receiveLock) {
-            if (wait) {
-                while (receiveQueue.isEmpty()) {
-                    try {
-                        receiveLock.wait();
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
+            while (receiveQueue.isEmpty()) {
+                try {
+                    receiveLock.wait();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    throwException();
                 }
             }
             return receiveQueue.poll();
@@ -191,7 +183,7 @@ public abstract class Link extends Thread{
     }
     public void putDataPackage(SelectionKey key, DataPackage dataPackage) {
         synchronized (sendLock) {
-            if (key.isValid()) {
+            if (key != null && key.isValid() && sendingStateHashMap.containsKey(key)) {
                 Queue<DataPackage> sendQueue = sendHashMap.computeIfAbsent(key, k -> new ConcurrentLinkedQueue<>());
                 sendQueue.add(dataPackage);
                 if (!sendingStateHashMap.get(key).get() && ((key.interestOps() & SelectionKey.OP_WRITE) == 0)) {
@@ -207,7 +199,7 @@ public abstract class Link extends Thread{
     }
 
     protected void receiveFinish(SelectionKey key) {
-        if (!cancelSet.contains(key) && key.isValid()) {
+        if (key != null && key.isValid() && !cancelSet.contains(key)) {
             eventQueue.add(() -> {
                 if (key.isValid()) {
                     key.interestOps(key.interestOps() | SelectionKey.OP_READ);
@@ -217,7 +209,7 @@ public abstract class Link extends Thread{
         }
     }
     protected void sendFinish(SelectionKey key) {
-        if (!cancelSet.contains(key) && key.isValid()) {
+        if (key != null && key.isValid() && !cancelSet.contains(key)) {
             sendingStateHashMap.get(key).set(false);
             if ((sendHashMap.get(key) != null) && ((key.interestOps() & SelectionKey.OP_WRITE) == 0)) {
                 eventQueue.add(() -> {
@@ -233,6 +225,18 @@ public abstract class Link extends Thread{
         receiveQueue.add(dataPackage);
         synchronized (receiveLock) {
             receiveLock.notify();
+        }
+    }
+    public void addException(NetException netException) {
+        exceptionQueue.add(netException);
+        synchronized (receiveLock) {
+            receiveLock.notify();
+        }
+    }
+    private void throwException() throws NetException {
+        NetException netException = exceptionQueue.poll();
+        if (netException != null) {
+            throw netException;
         }
     }
 

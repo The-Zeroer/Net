@@ -14,7 +14,7 @@ public class NetLog extends Thread {
     private static LogHandler logHandler;
     private static int maxLogCount, logCount;
     private static byte level;
-    private static Object lock = new Object();
+    private static final Object lock = new Object();
     private static boolean handling = false;
 
     private NetLog(){
@@ -56,6 +56,24 @@ public class NetLog extends Thread {
     public static void error(String msg, Object... args){
         if (level <= error){
             log(error, msg, args);
+        }
+    }
+
+    public static void error(Exception e){
+        if (level <= error){
+            synchronized (server.log.NetLog.class){
+                if (logCount < maxLogCount){
+                    logCount++;
+                } else {
+                    return;
+                }
+            }
+            logQueue.add(new LogPackage(System.currentTimeMillis(), e));
+            if (!handling) {
+                synchronized (lock) {
+                    lock.notify();
+                }
+            }
         }
     }
 

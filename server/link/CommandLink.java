@@ -30,22 +30,23 @@ public class CommandLink extends Link {
         SocketChannel channel = (SocketChannel) key.channel();
         CommandPackage CDP = new CommandPackage();
         try {
-            ByteBuffer buffer = ByteBuffer.allocate(14);
+            ByteBuffer buffer = ByteBuffer.allocate(CommandPackage.HEADER_SIZE);
             while (buffer.hasRemaining()) {
                 if (channel.read(buffer) == -1) {
-                    cancel(key);
+                    cancelCommandLink(key);
                     return;
                 }
             }
             buffer.flip();
-            CDP.setPackageSize(buffer.getInt()).setWay(buffer.get()).setType(buffer.get()).setTime(buffer.getLong());
+            CDP.setWay(buffer.get()).setType(buffer.get()).setTime(buffer.getLong()).setDataSize(buffer.getInt());
             // 验证Token
-            if (CDP.getWay() != DataPackage.WAY_LOGIN && linkTable.getTokenByCommandKey(key) == null) {
+            if (CDP.getWay() != DataPackage.WAY_LOGIN && CDP.getWay() != DataPackage.WAY_TOKEN_VERIFY
+                    && CDP.getWay() != DataPackage.WAY_HEART_BEAT && linkTable.getTokenByCommandKey(key) == null) {
                 NetLog.warn("连接 [$] 无Token,已断开", channel.getRemoteAddress());
-                cancel(key);
+                cancelCommandLink(key);
                 return;
             }
-            int dataSize = CDP.getPackageSize() - 14;
+            int dataSize = CDP.getDataSize();
             if (dataSize > 0) {
                 byte[] data = new byte[dataSize];
                 buffer = ByteBuffer.allocate(Math.min(dataSize, BUFFER_MAX_SIZE));
@@ -64,13 +65,8 @@ public class CommandLink extends Link {
                 CDP.setData(data);
             }
 
-            CDP.setSelectionKey(key).setUID(linkTable.getUIDByCommandKey(key));
-            NetLog.debug("接收 {$}", CDP);
-
             switch (CDP.getWay()) {
-                case DataPackage.WAY_HEART_BEAT -> {
-
-                }
+                case DataPackage.WAY_HEART_BEAT -> {}
 
                 case DataPackage.WAY_BUILD_LINK -> {
                     switch (CDP.getType()) {
@@ -87,12 +83,26 @@ public class CommandLink extends Link {
                     }
                 }
 
+                case DataPackage.WAY_TOKEN_VERIFY -> {
+                    String serverToken = linkTable.getTokenByCommandKey(key);
+                    String clientToken = new String(CDP.getData());
+                    if (serverToken != null && serverToken.equals(clientToken)) {
+                        NetLog.info("重新建立的连接 [$] Token验证成功", channel.getRemoteAddress());
+                    } else {
+                        NetLog.warn("重新建立的连接 [$] Token验证失败,已断开", channel.getRemoteAddress());
+                        cancelCommandLink(key);
+                    }
+                }
+
                 default -> {
                     addDataPackage(CDP);
                 }
             }
+
+            CDP.setSelectionKey(key).setUID(linkTable.getUIDByCommandKey(key));
+            NetLog.debug("接收 {$}", CDP);
         } catch (IOException e) {
-            cancel(key);
+            cancelCommandLink(key);
         } finally {
             receiveFinish(key);
         }
@@ -103,13 +113,13 @@ public class CommandLink extends Link {
         SocketChannel channel = (SocketChannel) key.channel();
         CommandPackage CDP = (CommandPackage) dataPackage;
         try {
-            ByteBuffer buffer = ByteBuffer.allocate(14);
-            buffer.putInt(CDP.getPackageSize()).put(CDP.getWay()).put(CDP.getType()).putLong(CDP.getTime());
+            ByteBuffer buffer = ByteBuffer.allocate(CommandPackage.HEADER_SIZE);
+            buffer.put(CDP.getWay()).put(CDP.getType()).putLong(CDP.getTime()).putInt(CDP.getDataSize());
             buffer.flip();
             while (buffer.hasRemaining()) {
                 channel.write(buffer);
             }
-            int dataSize = CDP.getPackageSize() - 14;
+            int dataSize = CDP.getDataSize();
             if (dataSize > 0) {
                 buffer = ByteBuffer.allocate(Math.min(dataSize, BUFFER_MAX_SIZE));
                 for (int residue = dataSize, writeCount = 0; residue > 0;residue -= writeCount, writeCount = 0) {
@@ -123,10 +133,15 @@ public class CommandLink extends Link {
             }
             NetLog.debug("发送成功 {$}", CDP);
         } catch (IOException e) {
-            NetLog.debug("发送失败 {$}", CDP);
-            cancel(key);
+            NetLog.error("发送失败 {$}", CDP);
+            cancelCommandLink(key);
         } finally {
             sendFinish(key);
         }
+    }
+
+    private void cancelCommandLink(SelectionKey key) {
+        linkTable.cancel(key);
+        cancel(key);
     }
 }

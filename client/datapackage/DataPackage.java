@@ -5,15 +5,41 @@ import java.text.SimpleDateFormat;
 
 public abstract class DataPackage {
     protected static final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
-    public static final int HEADER_SIZE = 14;
+    public static final int HEADER_SIZE = 16;
 
     protected byte way;
     protected byte type;
     protected long time;
     protected int dataSize;
     protected byte[] data;
+    protected short taskIdLength;
+    protected byte[] taskId;
 
     protected SelectionKey key;
+
+    public DataPackage() {}
+
+    public DataPackage(byte way) {
+        this(way, TYPE_TEXT, null);
+    }
+
+    public DataPackage(byte way, byte type) {
+        this(way, type, null);
+    }
+
+    public DataPackage(byte way, byte[] data) {
+        this(way, TYPE_TEXT, data);
+    }
+
+    public DataPackage(byte way, byte type, byte[] data) {
+        this.way = way;
+        this.type = type;
+        this.time = System.currentTimeMillis();
+        if (data != null) {
+            this.data = data;
+            dataSize += data.length;
+        }
+    }
 
     public byte getWay() {
         return way;
@@ -51,17 +77,39 @@ public abstract class DataPackage {
         return this;
     }
 
+    public short getTaskIdLength() {
+        return taskIdLength;
+    }
+    public String getTaskId() {
+        if (taskId != null) {
+            return new String(taskId);
+        } else {
+            return null;
+        }
+    }
+    public DataPackage setTaskId(String taskId) {
+        this.taskId = taskId.getBytes();
+        taskIdLength = (short) taskId.length();
+        return this;
+    }
+    public byte[] getTaskIdBytes() {
+        return taskId;
+    }
+
     @Override
     public String toString() {
         return getClass().getSimpleName()+ " [way=" + way + ", type=" + type + ", time=" + dateFormat.format(time)
-                + " ,dataSize=" + formatBytes(dataSize) + "]";
+                + ", dataSize=" + formatBytes(dataSize) + ", taskId=" + getTaskId() + "]";
     }
 
     public static String formatBytes(long bytes) {
-        if (bytes <= 0) return "0 B";
-        String[] units = new String[]{"B", "KB", "MB", "GB", "TB"};
-        int idx = (int) (Math.log(bytes) / Math.log(1024));
-        return String.format("%.2f %s", bytes / Math.pow(1024, idx), units[idx]);
+        if (bytes <= 0) {
+            return "0B";
+        } else {
+            String[] units = new String[]{"B", "KB", "MB", "GB", "TB"};
+            int idx = (int) (Math.log(bytes) / Math.log(1024));
+            return String.format("%.2f%s", bytes / Math.pow(1024, idx), units[idx]);
+        }
     }
 
     //注册

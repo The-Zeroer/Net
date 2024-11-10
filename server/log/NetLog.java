@@ -1,14 +1,13 @@
 package server.log;
 
-import java.util.Arrays;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class NetLog extends Thread {
-    public static final byte off = 0;
     public static final byte debug = 1;
     public static final byte info = 2;
     public static final byte error = 3;
     public static final byte warn = 4;
+    public static final byte off = 5;
 
     private static final NetLog instance = new NetLog();
     private static ConcurrentLinkedQueue<LogPackage> logQueue;

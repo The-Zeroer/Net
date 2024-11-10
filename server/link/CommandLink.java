@@ -1,9 +1,9 @@
 package server.link;
 
-import server.LinkTable;
 import server.datapackage.CommandPackage;
 import server.datapackage.DataPackage;
 import server.log.NetLog;
+import server.util.LinkTable;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -46,6 +46,14 @@ public class CommandLink extends Link {
                 cancelCommandLink(key);
                 return;
             }
+            byte[] taskIdBytes = new byte[buffer.getShort()];
+            buffer = ByteBuffer.wrap(taskIdBytes);
+            while (buffer.hasRemaining()) {
+                channel.read(buffer);
+            }
+            buffer.flip();
+            buffer.get(taskIdBytes);
+            CDP.setTaskId(new String(taskIdBytes));
             int dataSize = CDP.getDataSize();
             if (dataSize > 0) {
                 byte[] data = new byte[dataSize];
@@ -113,8 +121,9 @@ public class CommandLink extends Link {
         SocketChannel channel = (SocketChannel) key.channel();
         CommandPackage CDP = (CommandPackage) dataPackage;
         try {
-            ByteBuffer buffer = ByteBuffer.allocate(CommandPackage.HEADER_SIZE);
-            buffer.put(CDP.getWay()).put(CDP.getType()).putLong(CDP.getTime()).putInt(CDP.getDataSize());
+            ByteBuffer buffer = ByteBuffer.allocate(CommandPackage.HEADER_SIZE + CDP.getTaskIdLength());
+            buffer.put(CDP.getWay()).put(CDP.getType()).putLong(CDP.getTime()).putInt(CDP.getDataSize())
+                    .putShort(CDP.getTaskIdLength()).put(CDP.getTaskIdBytes());
             buffer.flip();
             while (buffer.hasRemaining()) {
                 channel.write(buffer);
@@ -138,6 +147,11 @@ public class CommandLink extends Link {
         } finally {
             sendFinish(key);
         }
+    }
+
+    @Override
+    protected void extraDisposeTimeOutLink(SelectionKey key) {
+        linkTable.cancel(key);
     }
 
     private void cancelCommandLink(SelectionKey key) {

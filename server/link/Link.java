@@ -1,17 +1,18 @@
 package server.link;
 
-import server.LinkTable;
 import server.datapackage.DataPackage;
 import server.exception.NetException;
 import server.log.NetLog;
+import server.util.LinkTable;
+import server.util.NetTool;
 import server.util.TokenBucket;
 
 import java.io.IOException;
 import java.net.SocketAddress;
-import java.nio.channels.*;
-import java.util.Iterator;
-import java.util.Queue;
-import java.util.Set;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -24,7 +25,7 @@ public abstract class Link extends Thread{
     protected final LinkTable linkTable;
     protected final ExecutorService workPool;
     protected final ConcurrentLinkedQueue<Runnable> eventQueue;
-    private final ConcurrentLinkedQueue<NetException> exceptionQueue;
+    protected final ConcurrentLinkedQueue<NetException> exceptionQueue;
     protected final ConcurrentHashMap<SelectionKey, AtomicBoolean> sendingStateHashMap;
     protected final ConcurrentHashMap<SelectionKey, Queue<DataPackage>> sendHashMap;
     protected final ConcurrentLinkedQueue<DataPackage> receiveQueue;
@@ -33,6 +34,8 @@ public abstract class Link extends Thread{
     protected final Object linkLock = new Object(), sendLock = new Object(), receiveLock = new Object();
     protected int maxLinkCount, linkCount;
     protected boolean running;
+
+    protected final HeartBeat heartBeat;
 
     public Link(LinkTable linkTable) throws IOException {
         this.linkTable = linkTable;
@@ -45,14 +48,20 @@ public abstract class Link extends Thread{
         cancelSet = ConcurrentHashMap.newKeySet();
         tokenBucket = new TokenBucket(2000, 1000);
         maxLinkCount = 1000;
-        //初始化线程池
+
         int poolSize = Runtime.getRuntime().availableProcessors();
         BlockingQueue<Runnable> queue = new ArrayBlockingQueue<>(1024);
         RejectedExecutionHandler policy = new ThreadPoolExecutor.AbortPolicy();
         workPool = new ThreadPoolExecutor(poolSize, poolSize * 2, 180, TimeUnit.SECONDS, queue, policy);
 
+        heartBeat = new HeartBeat();
+    }
+
+    @Override
+    public void start() {
         running = true;
-        this.start();
+        super.start();
+        heartBeat.start();
     }
 
     @Override
@@ -84,7 +93,7 @@ public abstract class Link extends Thread{
             if (tokenBucket.acquire()) {
                 if (key.isReadable()) {
                     key.interestOps(key.interestOps() & ~SelectionKey.OP_READ); // 清除 OP_READ 事件，但保留其他事件
-                    linkTable.updateLastActivityTime(key);
+                    heartBeat.updateLastActivityTime(key);
                     workPool.submit(() -> {receiveReceive(key);});
                 } else if (key.isWritable()) {
                     Queue<DataPackage> sendQueue = sendHashMap.get(key);
@@ -93,7 +102,7 @@ public abstract class Link extends Thread{
                         if (dataPackage != null) {
                             if (sendingStateHashMap.get(key).compareAndSet(false, true)) { // 检查并设置状态
                                 key.interestOps(key.interestOps() & ~SelectionKey.OP_WRITE); // 清除 OP_WRITE 事件，但保留其他事件
-                                linkTable.updateLastActivityTime(key);
+                                heartBeat.updateLastActivityTime(key);
                                 workPool.submit(() -> {sendReceive(key, dataPackage);});
                             }
                         } else {
@@ -111,6 +120,9 @@ public abstract class Link extends Thread{
 
     public void setMaxLinkCount(int maxLinkCount) {
         this.maxLinkCount = maxLinkCount;
+    }
+    public void setHeartBeatInterval(int heartBeatInterval) {
+        heartBeat.setHeartBeatInterval(heartBeatInterval);
     }
 
     public synchronized void register(SocketChannel socketChannel) throws IOException {
@@ -131,8 +143,8 @@ public abstract class Link extends Thread{
             try {
                 SelectionKey key = socketChannel.register(selector, SelectionKey.OP_READ);
                 sendingStateHashMap.put(key, new AtomicBoolean(false));
-                linkTable.updateLastActivityTime(key);
-                NetLog.info("连接 [$] 已注册至 [$] (当前注册数:$)", socketAddress, this.getName(), tempLinkCount);
+                heartBeat.updateLastActivityTime(key);
+                NetLog.info("连接 [$] 已注册至 [$] (当前注册数:$)", socketAddress, getName(), tempLinkCount);
             } catch (IOException e) {
                 NetLog.error(e);
             }
@@ -143,6 +155,7 @@ public abstract class Link extends Thread{
         if (sendingStateHashMap.remove(key) != null) {
             cancelSet.add(key);
             sendHashMap.remove(key);
+            heartBeat.removeLastActivityTime(key);
             int tempLinkCount;
             synchronized (linkLock) {
                 linkCount--;
@@ -161,7 +174,7 @@ public abstract class Link extends Thread{
             eventQueue.add(() -> {
                 key.cancel();
                 cancelSet.remove(key);
-                NetLog.info("连接 [$] 已从 [$] 中注销 (当前注册数:$)", finalSocketAddress, this.getName(), tempLinkCount);
+                NetLog.info("连接 [$] 已从 [$] 中注销 (当前注册数:$)", finalSocketAddress, getName(), tempLinkCount);
             });
             selector.wakeup();
         }
@@ -182,6 +195,9 @@ public abstract class Link extends Thread{
         }
     }
     public void putDataPackage(SelectionKey key, DataPackage dataPackage) {
+        if (dataPackage.getTaskId() == null) {
+            dataPackage.setTaskId(NetTool.produceTaskId());
+        }
         synchronized (sendLock) {
             if (key != null && key.isValid() && sendingStateHashMap.containsKey(key)) {
                 Queue<DataPackage> sendQueue = sendHashMap.computeIfAbsent(key, k -> new ConcurrentLinkedQueue<>());
@@ -227,13 +243,14 @@ public abstract class Link extends Thread{
             receiveLock.notify();
         }
     }
+
     public void addException(NetException netException) {
         exceptionQueue.add(netException);
         synchronized (receiveLock) {
             receiveLock.notify();
         }
     }
-    private void throwException() throws NetException {
+    protected void throwException() throws NetException {
         NetException netException = exceptionQueue.poll();
         if (netException != null) {
             throw netException;
@@ -242,4 +259,58 @@ public abstract class Link extends Thread{
 
     protected abstract void receiveReceive(SelectionKey key);
     protected abstract void sendReceive(SelectionKey key, DataPackage dataPackage);
+    protected void extraDisposeTimeOutLink(SelectionKey key) {}
+
+    protected class HeartBeat {
+        private final ConcurrentHashMap<SelectionKey, Long> lastActivityTime;
+        private final Timer timer;
+        private long HEARTBEAT_INTERVAL = 90000;
+        private String name;
+
+        protected HeartBeat() {
+            lastActivityTime = new ConcurrentHashMap<>();
+            timer = new Timer(true);
+        }
+
+        public void setHeartBeatInterval(int interval) {
+            HEARTBEAT_INTERVAL = interval * 1000L;
+        }
+
+        protected void start() {
+            name = Link.this.getName();
+            timer.schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    long nowTime = System.currentTimeMillis();
+                    for (Map.Entry<SelectionKey, Long> entry : lastActivityTime.entrySet()) {
+                        if (nowTime - entry.getValue() > HEARTBEAT_INTERVAL) {
+                            breakLink(entry.getKey());
+                        }
+                    }
+                }
+            }, HEARTBEAT_INTERVAL, HEARTBEAT_INTERVAL);
+            NetLog.info("已开启心跳检测 [$] ,间隔 [$] 秒",name, HEARTBEAT_INTERVAL / 1000);
+        }
+
+        protected void updateLastActivityTime(SelectionKey key) {
+            lastActivityTime.put(key, System.currentTimeMillis());
+        }
+        protected void removeLastActivityTime(SelectionKey key) {
+            lastActivityTime.remove(key);
+        }
+
+        private void breakLink(SelectionKey key) {
+            if (key.channel().isOpen()) {
+                try {
+                    NetLog.debug("超时未收到心跳包 [$] ,已断开连接 [$]",name, ((SocketChannel)key.channel()).getRemoteAddress());
+                } catch (IOException e) {
+                    NetLog.debug("超时未收到心跳包 [$] ,已断开连接 [$]",name, key.channel());
+                }
+                cancel(key);
+                extraDisposeTimeOutLink(key);
+            } else {
+                removeLastActivityTime(key);
+            }
+        }
+    }
 }

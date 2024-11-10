@@ -4,21 +4,19 @@ public class CommandPackage extends DataPackage {
 
     public CommandPackage() {}
 
-    public CommandPackage(byte wasy, byte type) {
-        this(wasy, type, null);
+    public CommandPackage(byte way) {
+        super(way, CommandPackage.TYPE_TEXT, null);
+    }
+
+    public CommandPackage(byte way, byte type) {
+        super(way, type);
     }
 
     public CommandPackage(byte way, byte[] data) {
-        this(way, DataPackage.TYPE_TEXT, data);
+        super(way, data);
     }
 
     public CommandPackage(byte way, byte type, byte[] data){
-        this.way = way;
-        this.type = type;
-        this.time = System.currentTimeMillis();
-        if (data != null) {
-            this.data = data;
-            dataSize += data.length;
-        }
+        super(way, type, data);
     }
 }

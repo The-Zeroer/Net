@@ -11,7 +11,8 @@ import client.handler.FileHandler;
 import client.handler.Handler;
 import client.handler.MessageHandler;
 import client.log.NetLog;
-import client.util.TOOL;
+import client.util.LinkTable;
+import client.util.NetTool;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -37,6 +38,8 @@ public class Link extends Thread{
     private InetSocketAddress serverAddress;
     private boolean running;
 
+    private final HeartBeat heartBeat;
+
     public Link(LinkTable linkTable) throws IOException {
         this.linkTable = linkTable;
         selector = Selector.open();
@@ -51,6 +54,8 @@ public class Link extends Thread{
         BlockingQueue<Runnable> queue = new ArrayBlockingQueue<>(128);
         RejectedExecutionHandler policy = new ThreadPoolExecutor.AbortPolicy();
         workPool = new ThreadPoolExecutor(6, poolSize*2, 180, TimeUnit.SECONDS, queue, policy);
+
+        heartBeat = new HeartBeat();
 
         running = true;
         this.start();
@@ -86,6 +91,9 @@ public class Link extends Thread{
             if (key.isReadable()) {
                 key.interestOps(key.interestOps() & ~SelectionKey.OP_READ);
                 linkTable.updateLastActivityTime(key);
+                if (handler instanceof CommandHandler) {
+                    heartBeat.upDateLastActivityTime();
+                }
                 workPool.submit(() -> {handler.receiveHandler(key);});
             } else if (key.isWritable()) {
                 Queue<DataPackage> sendQueue = sendHashMap.get(key);
@@ -93,7 +101,9 @@ public class Link extends Thread{
                     DataPackage dataPackage = sendQueue.poll();
                     if (dataPackage != null) {
                         key.interestOps(key.interestOps() & ~SelectionKey.OP_WRITE);
-                        linkTable.updateLastActivityTime(key);
+                        if (handler instanceof CommandHandler) {
+                            heartBeat.upDateLastActivityTime();
+                        }
                         workPool.submit(() -> {handler.sendHandle(key, dataPackage);});
                     } else {
                         sendHashMap.remove(key);
@@ -108,17 +118,22 @@ public class Link extends Thread{
         }
     }
 
+    public void setHeartBeatInterval(int heartBeatInterval) {
+        heartBeat.setHeartBeatInterval(heartBeatInterval);
+    }
+
     public synchronized void register(SocketChannel socketChannel, Handler handler) throws IOException {
         socketChannel.configureBlocking(false);
         eventQueue.add(() -> {
             try {
                 SelectionKey key = socketChannel.register(selector, SelectionKey.OP_READ);
                 relevancyHashMap.put(key, handler);
-                linkTable.updateLastActivityTime(key);
                 switch (handler) {
                     case CommandHandler commandHandler -> {
                         linkTable.putCommandKey(key);
                         serverAddress = (InetSocketAddress) socketChannel.getRemoteAddress();
+                        heartBeat.upDateLastActivityTime();
+                        heartBeat.start(key);
                         NetLog.info("连接 [commandLink] 已建立");
                     }
                     case MessageHandler messageHandler -> {
@@ -147,10 +162,11 @@ public class Link extends Thread{
                 case CommandHandler commandHandler -> {
                     NetLog.info("连接 [CommandLink] 已断开");
                     linkTable.removeCommandKey();
+                    heartBeat.stop();
                     if (againLink) {
                         if (againLink(commandHandler)) {
                             for (int i = 0; linkTable.getCommandKey() == null && i < 100; i++) {
-                                TOOL.sleep();
+                                NetTool.sleep();
                             }
                             putDataPackage(linkTable.getCommandKey()
                                     , new CommandPackage(DataPackage.WAY_TOKEN_VERIFY, linkTable.getToken().getBytes()));
@@ -169,7 +185,7 @@ public class Link extends Thread{
                     linkTable.removeMessageKey();
                     if (againLink) {
                         for (int i = 0; linkTable.getCommandKey() == null && linkTable.getToken() == null && i < 100; i++) {
-                            TOOL.sleep();
+                            NetTool.sleep();
                         }
                         if (linkTable.getCommandKey() != null && linkTable.getToken() != null) {
                             putDataPackage(linkTable.getCommandKey()
@@ -184,7 +200,7 @@ public class Link extends Thread{
                     linkTable.removeFileKey();
                     if (againLink) {
                         for (int i = 0; linkTable.getCommandKey() == null && linkTable.getToken() == null && i < 100; i++) {
-                            TOOL.sleep();
+                            NetTool.sleep();
                         }
                         if (linkTable.getCommandKey() != null && linkTable.getToken() != null) {
                             putDataPackage(linkTable.getCommandKey()
@@ -221,8 +237,11 @@ public class Link extends Thread{
         }
     }
     public void putDataPackage(SelectionKey key, DataPackage dataPackage) {
+        if (dataPackage.getTaskId() == null) {
+            dataPackage.setTaskId(NetTool.produceTaskId());
+        }
         synchronized (sendLock) {
-            if (key.isValid()) {
+            if (key != null && key.isValid()) {
                 Queue<DataPackage> sendQueue = sendHashMap.computeIfAbsent(key, k -> new ConcurrentLinkedQueue<>());
                 sendQueue.add(dataPackage);
                 if ((key.interestOps() & SelectionKey.OP_WRITE) == 0) {
@@ -304,5 +323,66 @@ public class Link extends Thread{
         }
         NetLog.info("重新连接服务器失败");
         return false;
+    }
+
+    private class HeartBeat implements Runnable{
+        private long HEARTBEAT_INTERVAL = 30000;
+        private long lastActivityTime;
+        private boolean running;
+        private Thread heartBeatThread;
+        private SelectionKey key;
+
+        public HeartBeat() {
+            lastActivityTime = System.currentTimeMillis();
+        }
+
+        @Override
+        public void run() {
+            while (running) {
+                try {
+                    Thread.sleep(HEARTBEAT_INTERVAL);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                if (System.currentTimeMillis() - lastActivityTime > HEARTBEAT_INTERVAL) {
+                    sendHeartBeat(key);
+                }
+            }
+        }
+
+        public void start(SelectionKey key) {
+            if (heartBeatThread == null || !heartBeatThread.isAlive()) {
+                this.key = key;
+                running = true;
+                heartBeatThread = new Thread(this);
+                heartBeatThread.start();
+            }
+            NetLog.info("已开启心跳,间隔 [$] 秒", HEARTBEAT_INTERVAL / 1000);
+        }
+
+        public void stop() {
+            running = false;
+            if (heartBeatThread != null) {
+                heartBeatThread.interrupt();
+                NetLog.info("已关闭心跳");
+            }
+        }
+
+        public void setHeartBeatInterval(int interval) {
+            HEARTBEAT_INTERVAL = interval * 1000L;
+        }
+
+        public void upDateLastActivityTime() {
+            lastActivityTime = System.currentTimeMillis();
+        }
+
+        private void sendHeartBeat(SelectionKey key) {
+            if (key.channel().isOpen()) {
+                putDataPackage(key, new CommandPackage(DataPackage.WAY_HEART_BEAT));
+            } else {
+                linkTable.removeLastActivityTime(key);
+            }
+        }
     }
 }

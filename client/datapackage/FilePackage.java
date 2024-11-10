@@ -4,7 +4,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 
 public class FilePackage extends DataPackage {
-    public static final int HEADER_SIZE = 18;
+    public static final int HEADER_SIZE = 20;
 
     private long fileSize;
     private File file;
@@ -13,17 +13,11 @@ public class FilePackage extends DataPackage {
 
 
     public FilePackage(byte way, byte[] data) {
-        this(way, TYPE_TEXT, data);
+        super(way, data);
     }
 
     public FilePackage(byte way, byte type, byte[] data) {
-        this.way = way;
-        this.type = type;
-        this.time = System.currentTimeMillis();
-        if (data != null) {
-            this.data = data;
-            dataSize += data.length;
-        }
+        super(way, type, data);
     }
 
     public FilePackage(byte way, byte type, File file) throws FileNotFoundException {
@@ -56,6 +50,6 @@ public class FilePackage extends DataPackage {
     @Override
     public String toString() {
         return getClass().getSimpleName()+ " [way=" + way + ", type=" + type + ", time=" + dateFormat.format(time)
-                + " ,fileSize=" + formatBytes(fileSize) + "]";
+                + " ,fileSize=" + formatBytes(fileSize) + ", taskId=" + new String(taskId) + "]";
     }
 }

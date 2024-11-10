@@ -6,8 +6,7 @@ import java.io.IOException;
 import java.nio.channels.SocketChannel;
 
 public class FilePackage extends DataPackage {
-    public static final int HEADER_SIZE = 18;
-
+    public static final int HEADER_SIZE = 20;
     private long fileSize;
     private File file;
 
@@ -66,6 +65,6 @@ public class FilePackage extends DataPackage {
         }
         return getClass().getSimpleName() + " [RemoteAddress=" + address + ", UID=" + UID
                 + ", way=" + way + ", type=" + type + ", time=" + dateFormat.format(time)
-                + ", fileSize=" + formatBytes(fileSize) + "]";
+                + ", fileSize=" + formatBytes(fileSize) + ", taskId=" + new String(taskId) + "]";
     }
 }

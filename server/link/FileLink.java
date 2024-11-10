@@ -1,10 +1,10 @@
 package server.link;
 
-import server.LinkTable;
 import server.datapackage.DataPackage;
 import server.datapackage.FilePackage;
 import server.log.NetLog;
-import server.util.TOOL;
+import server.util.LinkTable;
+import server.util.NetTool;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -58,6 +58,14 @@ public class FileLink extends Link {
                 canelFileLink(key);
                 return;
             }
+            byte[] taskIdBytes = new byte[buffer.getShort()];
+            buffer = ByteBuffer.wrap(taskIdBytes);
+            while (buffer.hasRemaining()) {
+                socketChannel.read(buffer);
+            }
+            buffer.flip();
+            buffer.get(taskIdBytes);
+            FDP.setTaskId(new String(taskIdBytes));
             if (FDP.getWay() == DataPackage.WAY_TOKEN_VERIFY) {
                 int dataSize = (int) buffer.getLong();
                 if (dataSize > 0) {
@@ -139,8 +147,9 @@ public class FileLink extends Link {
         SocketChannel socketChannel = (SocketChannel) key.channel();
         FilePackage FDP = (FilePackage) dataPackage;
         try (RandomAccessFile raf = new RandomAccessFile(FDP.getFile(), "r"); FileChannel fileChannel = raf.getChannel()) {
-            ByteBuffer buffer = ByteBuffer.allocate(client.datapackage.FilePackage.HEADER_SIZE);
-            buffer.put(FDP.getWay()).put(FDP.getType()).putLong(FDP.getTime()).putLong(FDP.getFileSize());
+            ByteBuffer buffer = ByteBuffer.allocate(FilePackage.HEADER_SIZE + FDP.getTaskIdLength());
+            buffer.put(FDP.getWay()).put(FDP.getType()).putLong(FDP.getTime()).putLong(FDP.getFileSize())
+                    .putShort(FDP.getTaskIdLength()).put(FDP.getTaskIdBytes());
             buffer.flip();
             while (buffer.hasRemaining()) {
                 socketChannel.write(buffer);
@@ -169,7 +178,7 @@ public class FileLink extends Link {
 
     private synchronized String getTempFileName(SelectionKey key) {
         try {
-            return tempFilePath + TOOL.getHashValue((String.valueOf(System.currentTimeMillis()) + UUID.randomUUID() + key).getBytes(), "MD5");
+            return tempFilePath + NetTool.getHashValue((String.valueOf(System.currentTimeMillis()) + UUID.randomUUID() + key).getBytes(), "MD5");
         } catch (NoSuchAlgorithmException e) {
             NetLog.error(e);
             return String.valueOf(System.currentTimeMillis());

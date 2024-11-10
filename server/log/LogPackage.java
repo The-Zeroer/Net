@@ -41,4 +41,17 @@ public class LogPackage {
         }
         return builder.toString();
     }
+
+    public long getTime() {
+        return time;
+    }
+    public byte getLevel() {
+        return level;
+    }
+    public String getMessage() {
+        return message;
+    }
+    public Object[] getArgs() {
+        return args;
+    }
 }

@@ -1,11 +1,10 @@
 package client.handler;
 
 import client.Link;
-import client.datapackage.CommandPackage;
 import client.datapackage.DataPackage;
 import client.datapackage.FilePackage;
 import client.log.NetLog;
-import server.util.TOOL;
+import client.util.NetTool;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -52,6 +51,14 @@ public class FileHandler extends Handler {
             buffer.flip();
             FDP.setWay(buffer.get()).setType(buffer.get()).setTime(buffer.getLong());
             FDP.setFile(tempFile).setFileSize(buffer.getLong());
+            byte[] taskIdBytes = new byte[buffer.getShort()];
+            buffer = ByteBuffer.wrap(taskIdBytes);
+            while (buffer.hasRemaining()) {
+                socketChannel.read(buffer);
+            }
+            buffer.flip();
+            buffer.get(taskIdBytes);
+            FDP.setTaskId(new String(taskIdBytes));
             long fileSize = FDP.getFileSize();
             for (long residue = fileSize, readCount = 0; residue > 0; residue -= readCount) {
                 readCount = fileChannel.transferFrom(socketChannel, fileSize - residue, residue);
@@ -77,9 +84,10 @@ public class FileHandler extends Handler {
         RandomAccessFile raf = null;
         FileChannel fileChannel = null;
         try {
-            ByteBuffer buffer = ByteBuffer.allocate(FilePackage.HEADER_SIZE);
+            ByteBuffer buffer = ByteBuffer.allocate(FilePackage.HEADER_SIZE + FDP.getTaskIdLength());
             if (FDP.getWay() == DataPackage.WAY_TOKEN_VERIFY) {
-                buffer.put(FDP.getWay()).put(FDP.getType()).putLong(FDP.getTime()).putLong(FDP.getDataSize());
+                buffer.put(FDP.getWay()).put(FDP.getType()).putLong(FDP.getTime()).putLong(FDP.getDataSize())
+                        .putShort(FDP.getTaskIdLength()).put(FDP.getTaskIdBytes());
                 buffer.flip();
                 while (buffer.hasRemaining()) {
                     socketChannel.write(buffer);
@@ -97,7 +105,8 @@ public class FileHandler extends Handler {
                     }
                 }
             } else {
-                buffer.put(FDP.getWay()).put(FDP.getType()).putLong(FDP.getTime()).putLong(FDP.getFileSize());
+                buffer.put(FDP.getWay()).put(FDP.getType()).putLong(FDP.getTime()).putLong(FDP.getFileSize())
+                        .putShort(FDP.getTaskIdLength()).put(FDP.getTaskIdBytes());
                 buffer.flip();
                 while (buffer.hasRemaining()) {
                     socketChannel.write(buffer);
@@ -128,14 +137,14 @@ public class FileHandler extends Handler {
                     fileChannel.close();
                 }
             } catch (IOException e) {
-                server.log.NetLog.error(e);
+                NetLog.error(e);
             }
         }
     }
 
     private synchronized String getTempFileName() {
         try {
-            return tempFilePath + TOOL.getHashValue((String.valueOf(System.currentTimeMillis()) + UUID.randomUUID()).getBytes(), "MD5");
+            return tempFilePath + NetTool.getHashValue((String.valueOf(System.currentTimeMillis()) + UUID.randomUUID()).getBytes(), "MD5");
         } catch (NoSuchAlgorithmException e) {
             NetLog.error(e);
             return String.valueOf(System.currentTimeMillis());

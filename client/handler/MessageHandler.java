@@ -21,7 +21,7 @@ public class MessageHandler extends Handler{
         SocketChannel channel = (SocketChannel) key.channel();
         MessagePackage MDP = new MessagePackage();
         try {
-            ByteBuffer buffer = ByteBuffer.allocate(14);
+            ByteBuffer buffer = ByteBuffer.allocate(MessagePackage.HEADER_SIZE);
             while (buffer.hasRemaining()) {
                 if (channel.read(buffer) == -1) {
                     link.cancel(key, false);
@@ -30,6 +30,16 @@ public class MessageHandler extends Handler{
             }
             buffer.flip();
             MDP.setDataSize(buffer.getInt()).setWay(buffer.get()).setType(buffer.get()).setTime(buffer.getLong());
+            byte[] taskIdBytes = new byte[buffer.getShort()];
+            byte[] senderBytes = new byte[buffer.getShort()];
+            byte[] receiverBytes = new byte[buffer.getShort()];
+            buffer = ByteBuffer.allocate(taskIdBytes.length + senderBytes.length + receiverBytes.length);
+            while (buffer.hasRemaining()) {
+                channel.read(buffer);
+            }
+            buffer.flip();
+            buffer.get(taskIdBytes).get(senderBytes).get(receiverBytes);
+            MDP.setSender(new String(senderBytes)).setReceiver(new String(receiverBytes)).setTaskId(new String(taskIdBytes));
             int dataSize = MDP.getDataSize();
             if (dataSize > 0) {
                 byte[] data = new byte[dataSize];
@@ -64,8 +74,11 @@ public class MessageHandler extends Handler{
         MessagePackage MDP = (MessagePackage) dataPackage;
         try {
             SocketChannel channel = (SocketChannel) key.channel();
-            ByteBuffer buffer = ByteBuffer.allocate(14);
-            buffer.put(MDP.getWay()).put(MDP.getType()).putLong(MDP.getTime()).putInt(MDP.getDataSize());
+            ByteBuffer buffer = ByteBuffer.allocate(MessagePackage.HEADER_SIZE
+                    + MDP.getTaskIdLength() + MDP.getSenderLenght() + MDP.getReceiverLenght());
+            buffer.put(MDP.getWay()).put(MDP.getType()).putLong(MDP.getTime()).putInt(MDP.getDataSize())
+                    .putShort(MDP.getTaskIdLength()).putShort(MDP.getSenderLenght()).putShort(MDP.getReceiverLenght())
+                    .put(MDP.getTaskIdBytes()).put(MDP.getSenderBytes()).put(MDP.getReceiverBytes());
             buffer.flip();
             while (buffer.hasRemaining()) {
                 channel.write(buffer);

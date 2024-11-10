@@ -12,7 +12,8 @@ import client.handler.FileHandler;
 import client.handler.MessageHandler;
 import client.log.LogHandler;
 import client.log.NetLog;
-import client.util.TOOL;
+import client.util.LinkTable;
+import client.util.NetTool;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -26,7 +27,6 @@ public class NetClient {
     private final CommandHandler commandHandler;
     private final MessageHandler messageHandler;
     private final FileHandler fileHandler;
-    private final HeartBeat heartBeat;
 
     public NetClient() throws IOException {
         linkTable = new LinkTable();
@@ -37,7 +37,6 @@ public class NetClient {
         commandHandler.setMessageHandler(messageHandler);
         commandHandler.setFileHandler(fileHandler);
         commandHandler.setLinkTable(linkTable);
-        heartBeat = new HeartBeat(link, linkTable);
     }
 
     /**
@@ -47,13 +46,12 @@ public class NetClient {
         NetLog.info("正在连接服务器 [$:$]", host, port);
         SocketChannel socketChannel = SocketChannel.open(new InetSocketAddress(host, port));
         link.register(socketChannel, commandHandler);
-        heartBeat.start();
     }
 
     public synchronized void putCommandPackage(CommandPackage commandPackage) {
         for (int i = 0; (linkTable.getCommandKey() == null || (commandPackage.getWay() != DataPackage.WAY_LOGIN
                 && linkTable.getToken() == null)) && i < 100; i++) {
-            TOOL.sleep();
+            NetTool.sleep();
         }
         link.putDataPackage(linkTable.getCommandKey(), commandPackage);
     }
@@ -65,7 +63,7 @@ public class NetClient {
             }
             case LinkTable.VERIFY -> {
                 for (int i = 0; !linkTable.messageQueueEmpty() && i < 100; i++) {
-                    TOOL.sleep();
+                    NetTool.sleep();
                 }
                 if (linkTable.messageQueueEmpty()) {
                     link.putDataPackage(messageKey, messagePackage);
@@ -78,7 +76,7 @@ public class NetClient {
             }
             case LinkTable.LINK_1 -> {
                 for (int i = 0; linkTable.getToken() == null && i < 100; i++) {
-                    TOOL.sleep();
+                    NetTool.sleep();
                 }
                 if (linkTable.getToken() != null) {
                     putCommandPackage(new CommandPackage(DataPackage.WAY_BUILD_LINK, DataPackage.TYPE_MESSAGE_ADDRESS));
@@ -98,7 +96,7 @@ public class NetClient {
             }
             case LinkTable.VERIFY -> {
                 for (int i = 0; !linkTable.fileQueueEmpty() && i < 100; i++) {
-                    TOOL.sleep();
+                    NetTool.sleep();
                 }
                 if (linkTable.fileQueueEmpty()) {
                     link.putDataPackage(fileKey, filePackage);
@@ -111,7 +109,7 @@ public class NetClient {
             }
             case LinkTable.LINK_1 -> {
                 for (int i = 0; linkTable.getToken() == null && i < 100; i++) {
-                    TOOL.sleep();
+                    NetTool.sleep();
                 }
                 if (linkTable.getToken() != null) {
                     putCommandPackage(new CommandPackage(DataPackage.WAY_BUILD_LINK, DataPackage.TYPE_FILE_ADDRESS));
@@ -142,7 +140,7 @@ public class NetClient {
      * 单位(s)
      */
     public void setHeartBeatInterval(int interval) {
-        heartBeat.setHeartBeatInterval(interval);
+        link.setHeartBeatInterval(interval);
     }
 
     public void setTempFilePath(String tempFilePath) throws FileNotFoundException {

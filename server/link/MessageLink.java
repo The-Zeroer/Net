@@ -1,9 +1,9 @@
 package server.link;
 
-import server.LinkTable;
 import server.datapackage.DataPackage;
 import server.datapackage.MessagePackage;
 import server.log.NetLog;
+import server.util.LinkTable;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -35,6 +35,16 @@ public class MessageLink extends Link {
                 canelMessageLink(key);
                 return;
             }
+            byte[] taskIdBytes = new byte[buffer.getShort()];
+            byte[] senderBytes = new byte[buffer.getShort()];
+            byte[] receiverBytes = new byte[buffer.getShort()];
+            buffer = ByteBuffer.allocate(taskIdBytes.length + senderBytes.length + receiverBytes.length);
+            while (buffer.hasRemaining()) {
+                channel.read(buffer);
+            }
+            buffer.flip();
+            buffer.get(taskIdBytes).get(senderBytes).get(receiverBytes);
+            MDP.setSender(new String(senderBytes)).setReceiver(new String(receiverBytes)).setTaskId(new String(taskIdBytes));
             int dataSize = MDP.getDataSize();
             if (dataSize > 0) {
                 byte[] data = new byte[dataSize];
@@ -98,8 +108,11 @@ public class MessageLink extends Link {
         SocketChannel channel = (SocketChannel) key.channel();
         MessagePackage MDP = (MessagePackage) dataPackage;
         try {
-            ByteBuffer buffer = ByteBuffer.allocate(MessagePackage.HEADER_SIZE);
-            buffer.put(MDP.getWay()).put(MDP.getType()).putLong(MDP.getTime()).putInt(MDP.getDataSize());
+            ByteBuffer buffer = ByteBuffer.allocate(MessagePackage.HEADER_SIZE
+                    + MDP.getTaskIdLength() + MDP.getSenderLenght() + MDP.getReceiverLenght());
+            buffer.put(MDP.getWay()).put(MDP.getType()).putLong(MDP.getTime()).putInt(MDP.getDataSize())
+                    .putShort(MDP.getTaskIdLength()).putShort(MDP.getSenderLenght()).putShort(MDP.getReceiverLenght())
+                    .put(MDP.getTaskIdBytes()).put(MDP.getSenderBytes()).put(MDP.getReceiverBytes());
             buffer.flip();
             while (buffer.hasRemaining()) {
                 channel.write(buffer);

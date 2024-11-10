@@ -61,7 +61,7 @@ public class NetLog extends Thread {
 
     public static void error(Exception e){
         if (level <= error){
-            synchronized (server.log.NetLog.class){
+            synchronized (NetLog.class){
                 if (logCount < maxLogCount){
                     logCount++;
                 } else {

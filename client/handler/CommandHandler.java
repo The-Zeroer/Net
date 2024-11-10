@@ -1,13 +1,13 @@
 package client.handler;
 
 import client.Link;
-import client.LinkTable;
 import client.datapackage.CommandPackage;
 import client.datapackage.DataPackage;
 import client.datapackage.FilePackage;
 import client.datapackage.MessagePackage;
 import client.log.NetLog;
-import client.util.TOOL;
+import client.util.LinkTable;
+import client.util.NetTool;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -48,6 +48,14 @@ public class CommandHandler extends Handler{
             }
             buffer.flip();
             CDP.setWay(buffer.get()).setType(buffer.get()).setTime(buffer.getLong()).setDataSize(buffer.getInt());
+            byte[] taskIdBytes = new byte[buffer.getShort()];
+            buffer = ByteBuffer.wrap(taskIdBytes);
+            while (buffer.hasRemaining()) {
+                channel.read(buffer);
+            }
+            buffer.flip();
+            buffer.get(taskIdBytes);
+            CDP.setTaskId(new String(taskIdBytes));
             int dataSize = CDP.getDataSize();
             if (dataSize > 0) {
                 byte[] data = new byte[dataSize];
@@ -85,10 +93,10 @@ public class CommandHandler extends Handler{
                                             new InetSocketAddress(address[0], Integer.parseInt(address[1])));
                                     link.register(socketChannel, messageHandler);
                                     for (int i = 0; linkTable.getMessageKey() == null && i < 100; i++) {
-                                        TOOL.sleep();
+                                        NetTool.sleep();
                                     }
-                                    link.putDataPackage(linkTable.getMessageKey(), new MessagePackage(DataPackage.WAY_TOKEN_VERIFY
-                                            , linkTable.getToken().getBytes()));
+                                    link.putDataPackage(linkTable.getMessageKey(), new MessagePackage
+                                            (DataPackage.WAY_TOKEN_VERIFY, linkTable.getToken()));
                                     linkTable.setMessageLinkState(LinkTable.VERIFY);
                                     while (true) {
                                         MessagePackage messagePackage = linkTable.getMessagePackage();
@@ -111,7 +119,7 @@ public class CommandHandler extends Handler{
                                             new InetSocketAddress(address[0], Integer.parseInt(address[1])));
                                     link.register(socketChannel, fileHandler);
                                     for (int i = 0; linkTable.getFileKey() == null && i < 100; i++) {
-                                        TOOL.sleep();
+                                        NetTool.sleep();
                                     }
                                     link.putDataPackage(linkTable.getFileKey(), new FilePackage(DataPackage.WAY_TOKEN_VERIFY
                                             , linkTable.getToken().getBytes()));
@@ -150,8 +158,9 @@ public class CommandHandler extends Handler{
         CommandPackage CDP = (CommandPackage) dataPackage;
         SocketChannel channel = (SocketChannel) key.channel();
         try {
-            ByteBuffer buffer = ByteBuffer.allocate(CommandPackage.HEADER_SIZE);
-            buffer.put(CDP.getWay()).put(CDP.getType()).putLong(CDP.getTime()).putInt(CDP.getDataSize());
+            ByteBuffer buffer = ByteBuffer.allocate(CommandPackage.HEADER_SIZE + CDP.getTaskIdLength());
+            buffer.put(CDP.getWay()).put(CDP.getType()).putLong(CDP.getTime()).putInt(CDP.getDataSize())
+                    .putShort(CDP.getTaskIdLength()).put(CDP.getTaskIdBytes());
             buffer.flip();
             while (buffer.hasRemaining()) {
                 channel.write(buffer);

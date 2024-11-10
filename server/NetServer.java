@@ -10,7 +10,8 @@ import server.link.FileLink;
 import server.link.MessageLink;
 import server.log.LogHandler;
 import server.log.NetLog;
-import server.util.TOOL;
+import server.util.LinkTable;
+import server.util.NetTool;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -25,7 +26,6 @@ public class NetServer {
     private final MessageLink messageLink;
     private final FileLink fileLink;
     private final LinkTable linkTable;
-    private final HeartBeat heartBeat;
     private ServerSocketChannel CSSC, MSSC, FSSC;
     private String messagAddress, fileAddress;
 
@@ -40,7 +40,6 @@ public class NetServer {
         fileLink = new FileLink(linkTable);
         fileLink.setName("FileLink");
         linkTable.setLink(commandLink, messageLink, fileLink);
-        heartBeat = new HeartBeat(linkTable);
     }
 
     public void bindCommandPort(int port) throws IOException {
@@ -76,12 +75,14 @@ public class NetServer {
         accept.addMonitor(CSSC, commandLink);
         accept.addMonitor(MSSC, messageLink);
         accept.addMonitor(FSSC, fileLink);
+        commandLink.start();
+        messageLink.start();
+        fileLink.start();
         accept.start();
-        heartBeat.start();
     }
 
     public void register(SelectionKey key, String UID, String addition) {
-        String token = TOOL.getToken(key, addition);
+        String token = NetTool.getToken(key, addition);
         linkTable.register(key, UID, token);
         commandLink.putDataPackage(key, new CommandPackage(DataPackage.WAY_TOKEN_VERIFY, token.getBytes())
                 .setSelectionKey(key).setUID(UID));
@@ -90,12 +91,17 @@ public class NetServer {
         linkTable.cancel(UID);
     }
 
+    public void putCommandPackage(SelectionKey key, CommandPackage commandPackage) {
+        commandLink.putDataPackage(key, commandPackage);
+    }
+
     public boolean putCommandPackage(String UID, CommandPackage commandPackage) {
         SelectionKey commandKey = linkTable.getCommandKeyByUID(UID);
         if (commandKey != null) {
             commandLink.putDataPackage(commandKey, commandPackage.setSelectionKey(commandKey).setUID(UID));
             return true;
         } else {
+            NetLog.warn("发送 [CommandPackage] 时,目标UID [$] 不存在", UID);
             return false;
         }
     }
@@ -107,7 +113,7 @@ public class NetServer {
             }
             case LinkTable.VERIFY -> {
                 for (int i = 0; !linkTable.messageQueueEmpty(UID) && i < 100; i++) {
-                    TOOL.sleep();
+                    NetTool.sleep();
                 }
                 if (linkTable.messageQueueEmpty(UID)) {
                     messageLink.putDataPackage(messageKey, messagePackage.setSelectionKey(messageKey).setUID(UID));
@@ -125,7 +131,7 @@ public class NetServer {
                         , DataPackage.TYPE_MESSAGE_ADDRESS, messagAddress.getBytes()));
             }
             case null -> {
-                NetLog.warn("发送 [MessagePackage] 时,目标UID [$] 不存在", UID);
+                NetLog.info("发送 [MessagePackage] 时,目标UID [$] 不存在", UID);
                 return false;
             }
             default -> NetLog.error(new IllegalStateException());
@@ -140,7 +146,7 @@ public class NetServer {
             }
             case LinkTable.VERIFY -> {
                 for (int i = 0; !linkTable.fileQueueEmpty(UID) && i < 100; i++) {
-                    TOOL.sleep();
+                    NetTool.sleep();
                 }
                 if (linkTable.fileQueueEmpty(UID)) {
                     fileLink.putDataPackage(fileKey, filePackage.setSelectionKey(fileKey).setUID(UID));
@@ -158,7 +164,7 @@ public class NetServer {
                         , DataPackage.TYPE_FILE_ADDRESS, fileAddress.getBytes()));
             }
             case null -> {
-                NetLog.warn("发送 [FilePackage] 时,目标UID [$] 不存在", UID);
+                NetLog.info("发送 [FilePackage] 时,目标UID [$] 不存在", UID);
                 return false;
             }
             default -> NetLog.error(new IllegalStateException());
@@ -203,7 +209,7 @@ public class NetServer {
      * 单位(s)
      */
     public void setHeartBeatInterval(int interval) {
-        heartBeat.setHeartBeatInterval(interval);
+        commandLink.setHeartBeatInterval(interval);
     }
 
     public void setTempFilePath(String tempFilePath) throws FileNotFoundException {

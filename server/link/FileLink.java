@@ -1,10 +1,11 @@
-package server.link;
+package net.link;
 
-import server.datapackage.DataPackage;
-import server.datapackage.FilePackage;
-import server.log.NetLog;
-import server.util.LinkTable;
-import server.util.NetTool;
+import net.NetServer;
+import net.util.LinkTable;
+import net.datapackage.DataPackage;
+import net.datapackage.FilePackage;
+import net.log.NetLog;
+import net.util.NetTool;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -21,9 +22,9 @@ public class FileLink extends Link {
     private static final int BUFFER_MAX_SIZE = 8*1024;
     private String tempFilePath;
 
-    public FileLink(LinkTable linkTable) throws IOException {
-        super(linkTable);
-        tempFilePath = ".";
+    public FileLink(NetServer netServer, LinkTable linkTable) throws IOException {
+        super(netServer, linkTable);
+        tempFilePath = ".\\";
     }
 
     public void setTempFilePath(String tempFilePath) throws FileNotFoundException {
@@ -52,12 +53,13 @@ public class FileLink extends Link {
                 }
             }
             buffer.flip();
-            FDP.setWay(buffer.get()).setType(buffer.get()).setTime(buffer.getLong());
+            FDP.setWay(buffer.get()).setType(buffer.get()).setAppendState(buffer.get()).setTime(buffer.getLong());
             if (FDP.getWay() != DataPackage.WAY_TOKEN_VERIFY && linkTable.getTokenByMessageKey(key) == null) {
                 NetLog.warn("连接 [$] (FileLink) 无Token,已断开", socketChannel.getRemoteAddress());
                 canelFileLink(key);
                 return;
             }
+            int dataSize = (int) buffer.getLong();
             byte[] taskIdBytes = new byte[buffer.getShort()];
             buffer = ByteBuffer.wrap(taskIdBytes);
             while (buffer.hasRemaining()) {
@@ -66,8 +68,9 @@ public class FileLink extends Link {
             buffer.flip();
             buffer.get(taskIdBytes);
             FDP.setTaskId(new String(taskIdBytes));
+            FDP.setSelectionKey(key).setUID(linkTable.getUIDByFileKey(key));
+
             if (FDP.getWay() == DataPackage.WAY_TOKEN_VERIFY) {
-                int dataSize = (int) buffer.getLong();
                 if (dataSize > 0) {
                     byte[] data = new byte[dataSize];
                     buffer = ByteBuffer.allocate(Math.min(dataSize, BUFFER_MAX_SIZE));
@@ -112,18 +115,14 @@ public class FileLink extends Link {
             } else {
                 raf = new RandomAccessFile(tempFile, "rw");
                 fileChannel = raf.getChannel();
-                long fileSize = buffer.getLong();
+                long fileSize = dataSize;
                 for (long residue = fileSize, readCount = 0; residue > 0; residue -= readCount) {
                     readCount = fileChannel.transferFrom(socketChannel, fileSize - residue, residue);
-                    if (readCount > 0) {
-                        NetLog.debug("接收文件中,剩余 [$],本次接收 [$]"
-                                , DataPackage.formatBytes(residue - readCount), DataPackage.formatBytes(readCount));
-                    }
                 }
                 FDP.setFile(tempFile).setFileSize(fileSize);
+                addDataPackage(FDP);
             }
 
-            FDP.setSelectionKey(key).setUID(linkTable.getUIDByFileKey(key));
             NetLog.debug("接收 {$}", FDP);
         } catch (IOException e) {
             canelFileLink(key);
@@ -148,8 +147,8 @@ public class FileLink extends Link {
         FilePackage FDP = (FilePackage) dataPackage;
         try (RandomAccessFile raf = new RandomAccessFile(FDP.getFile(), "r"); FileChannel fileChannel = raf.getChannel()) {
             ByteBuffer buffer = ByteBuffer.allocate(FilePackage.HEADER_SIZE + FDP.getTaskIdLength());
-            buffer.put(FDP.getWay()).put(FDP.getType()).putLong(FDP.getTime()).putLong(FDP.getFileSize())
-                    .putShort(FDP.getTaskIdLength()).put(FDP.getTaskIdBytes());
+            buffer.put(FDP.getWay()).put(FDP.getType()).put(FDP.getAppendState()).putLong(FDP.getTime())
+                    .putLong(FDP.getFileSize()).putShort(FDP.getTaskIdLength()).put(FDP.getTaskIdBytes());
             buffer.flip();
             while (buffer.hasRemaining()) {
                 socketChannel.write(buffer);
@@ -157,14 +156,10 @@ public class FileLink extends Link {
             long fileSize = FDP.getFileSize();
             for (long residue = fileSize, writeCount = 0; residue > 0; residue -= writeCount) {
                 writeCount = fileChannel.transferTo(fileSize - residue, residue, socketChannel);
-                if (writeCount > 0) {
-                    NetLog.debug("发送文件中,剩余 [$],本次发送 [$]"
-                            , DataPackage.formatBytes(residue - writeCount), DataPackage.formatBytes(writeCount));
-                }
             }
-            NetLog.error("发送成功 {$}", FDP);
+            NetLog.debug("发送 {$} 成功", FDP);
         } catch (IOException e) {
-            NetLog.error("发送失败 {$}", FDP);
+            NetLog.error("发送 {$} 失败", FDP);
             canelFileLink(key);
         } finally {
             sendFinish(key);

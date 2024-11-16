@@ -1,6 +1,6 @@
-package client.exception.token;
+package net.exception.token;
 
-import client.exception.NetException;
+import net.exception.NetException;
 
 public class TokenMissingException extends NetException {
     public TokenMissingException(){}

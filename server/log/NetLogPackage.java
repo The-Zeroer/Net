@@ -2,22 +2,22 @@ package net.log;
 
 import java.text.SimpleDateFormat;
 
-public class LogPackage {
-    public SimpleDateFormat dateFormat = new SimpleDateFormat("HH:mm:ss.SSS");
-    public long time;
-    public byte level;
-    public String message;
-    public Object[] args;
+public class NetLogPackage {
+    private SimpleDateFormat dateFormat = new SimpleDateFormat("HH:mm:ss.SSS");
+    private long time;
+    private byte level;
+    private String message;
+    private Object[] args;
     private Exception exception;
 
-    public LogPackage(long time, byte level, String message, Object[] args) {
+    public NetLogPackage(long time, byte level, String message, Object[] args) {
         this.time = time;
         this.level = level;
         this.message = message;
         this.args = args;
     }
 
-    public LogPackage(long time, Exception e) {
+    public NetLogPackage(long time, Exception e) {
         this.time = time;
         this.exception = e;
     }
@@ -40,5 +40,18 @@ public class LogPackage {
             }
         }
         return builder.toString();
+    }
+
+    public long getTime() {
+        return time;
+    }
+    public byte getLevel() {
+        return level;
+    }
+    public String getMessage() {
+        return message;
+    }
+    public Object[] getArgs() {
+        return args;
     }
 }

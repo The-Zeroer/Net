@@ -1,4 +1,4 @@
-package client.log;
+package net.log;
 
 import java.util.concurrent.ConcurrentLinkedQueue;
 

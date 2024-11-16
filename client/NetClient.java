@@ -1,19 +1,20 @@
-package client;
+package net;
 
-import client.datapackage.CommandPackage;
-import client.datapackage.DataPackage;
-import client.datapackage.FilePackage;
-import client.datapackage.MessagePackage;
-import client.exception.link.AgainLinkTimeOutException;
-import client.exception.link.ServerCloseLinkException;
-import client.exception.token.TokenMissingException;
-import client.handler.CommandHandler;
-import client.handler.FileHandler;
-import client.handler.MessageHandler;
-import client.log.LogHandler;
-import client.log.NetLog;
-import client.util.LinkTable;
-import client.util.NetTool;
+import net.datapackage.CommandPackage;
+import net.datapackage.DataPackage;
+import net.datapackage.FilePackage;
+import net.datapackage.MessagePackage;
+import net.exception.link.AgainLinkTimeOutException;
+import net.exception.link.ServerCloseLinkException;
+import net.exception.token.TokenMissingException;
+import net.handler.CommandHandler;
+import net.handler.FileHandler;
+import net.handler.MessageHandler;
+import net.log.LogHandler;
+import net.log.NetLog;
+import net.util.LinkTable;
+import net.util.NetTool;
+import net.util.TransferSchedule;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -30,7 +31,7 @@ public class NetClient {
 
     public NetClient() throws IOException {
         linkTable = new LinkTable();
-        link = new Link(linkTable);
+        link = new Link(this, linkTable);
         commandHandler = new CommandHandler(link);
         messageHandler = new MessageHandler(link);
         fileHandler = new FileHandler(link);
@@ -120,6 +121,12 @@ public class NetClient {
                 }
             }
         }
+    }
+    public void setFileSendSchedule(String taskId, TransferSchedule transferSchedule) {
+        fileHandler.putSendTransferSchedule(taskId, transferSchedule);
+    }
+    public void setFileReceiveSchedule(String taskId, TransferSchedule transferSchedule) {
+        fileHandler.putReceiveTransferSchedule(taskId, transferSchedule);
     }
 
     public DataPackage getDataPackage() throws AgainLinkTimeOutException, ServerCloseLinkException, TokenMissingException {

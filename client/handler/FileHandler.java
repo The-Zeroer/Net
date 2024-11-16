@@ -1,10 +1,11 @@
-package client.handler;
+package net.handler;
 
-import client.Link;
-import client.datapackage.DataPackage;
-import client.datapackage.FilePackage;
-import client.log.NetLog;
-import client.util.NetTool;
+import net.Link;
+import net.datapackage.DataPackage;
+import net.datapackage.FilePackage;
+import net.log.NetLog;
+import net.util.NetTool;
+import net.util.TransferSchedule;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -16,13 +17,18 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.security.NoSuchAlgorithmException;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class FileHandler extends Handler {
+    private final ConcurrentHashMap<String, TransferSchedule> sendScheduleHashMap;
+    private final ConcurrentHashMap<String, TransferSchedule> receiveScheduleHashMap;
     private String tempFilePath;
 
     public FileHandler(Link link) {
         super(link);
-        tempFilePath = ".";
+        tempFilePath = ".\\";
+        sendScheduleHashMap = new ConcurrentHashMap<>();
+        receiveScheduleHashMap = new ConcurrentHashMap<>();
     }
 
     public void setTempFilePath(String tempFilePath) throws FileNotFoundException {
@@ -34,13 +40,21 @@ public class FileHandler extends Handler {
             }
         }
     }
+    public void putSendTransferSchedule(String taskId, TransferSchedule schedule) {
+        sendScheduleHashMap.put(taskId, schedule);
+    }
+    public void putReceiveTransferSchedule(String taskId, TransferSchedule schedule) {
+        receiveScheduleHashMap.put(taskId, schedule);
+    }
 
     @Override
     public void receiveHandler(SelectionKey key) {
         SocketChannel socketChannel = (SocketChannel) key.channel();
         FilePackage FDP = new FilePackage();
         File tempFile = new File(getTempFileName());
-        try (RandomAccessFile raf = new RandomAccessFile(tempFile, "rw"); FileChannel fileChannel = raf.getChannel()) {
+        RandomAccessFile raf = null;
+        FileChannel fileChannel = null;
+        try {
             ByteBuffer buffer = ByteBuffer.allocate(FilePackage.HEADER_SIZE);
             while (buffer.hasRemaining()) {
                 if (socketChannel.read(buffer) == -1) {
@@ -49,8 +63,8 @@ public class FileHandler extends Handler {
                 }
             }
             buffer.flip();
-            FDP.setWay(buffer.get()).setType(buffer.get()).setTime(buffer.getLong());
-            FDP.setFile(tempFile).setFileSize(buffer.getLong());
+            FDP.setWay(buffer.get()).setType(buffer.get()).setAppendState(buffer.get()).setTime(buffer.getLong());
+            long fileSize = buffer.getLong();
             byte[] taskIdBytes = new byte[buffer.getShort()];
             buffer = ByteBuffer.wrap(taskIdBytes);
             while (buffer.hasRemaining()) {
@@ -59,13 +73,25 @@ public class FileHandler extends Handler {
             buffer.flip();
             buffer.get(taskIdBytes);
             FDP.setTaskId(new String(taskIdBytes));
-            long fileSize = FDP.getFileSize();
-            for (long residue = fileSize, readCount = 0; residue > 0; residue -= readCount) {
-                readCount = fileChannel.transferFrom(socketChannel, fileSize - residue, residue);
-                if (readCount > 0) {
-                    NetLog.debug("接收文件中,剩余 [$],本次接收 [$]"
-                            , DataPackage.formatBytes(residue - readCount), DataPackage.formatBytes(readCount));
+            if (fileSize > 0) {
+                raf = new RandomAccessFile(tempFile, "rw");
+                fileChannel = raf.getChannel();
+                TransferSchedule transferSchedule = receiveScheduleHashMap.remove(FDP.getTaskId());
+                if (transferSchedule != null) {
+                    transferSchedule.showTransferSchedule(fileSize, fileSize);
+                    for (long residue = fileSize, readCount = 0; residue > 0; residue -= readCount) {
+                        readCount = fileChannel.transferFrom(socketChannel, fileSize - residue, residue);
+                        if (readCount > 0) {
+                            transferSchedule.showTransferSchedule(fileSize, residue);
+                        }
+                    }
+                    transferSchedule.showTransferSchedule(fileSize, 0);
+                } else {
+                    for (long residue = fileSize, readCount = 0; residue > 0; residue -= readCount) {
+                        readCount = fileChannel.transferFrom(socketChannel, fileSize - residue, residue);
+                    }
                 }
+                FDP.setFile(tempFile).setFileSize(fileSize);
             }
             link.addDataPackage(FDP);
             NetLog.debug("接收 {$}", FDP);
@@ -74,6 +100,16 @@ public class FileHandler extends Handler {
             link.cancel(key, true);
         } finally {
             link.receiveFinish(key);
+            try {
+                if (raf != null) {
+                    raf.close();
+                }
+                if (fileChannel != null) {
+                    fileChannel.close();
+                }
+            } catch (IOException e) {
+                NetLog.error(e);
+            }
         }
     }
 
@@ -86,8 +122,8 @@ public class FileHandler extends Handler {
         try {
             ByteBuffer buffer = ByteBuffer.allocate(FilePackage.HEADER_SIZE + FDP.getTaskIdLength());
             if (FDP.getWay() == DataPackage.WAY_TOKEN_VERIFY) {
-                buffer.put(FDP.getWay()).put(FDP.getType()).putLong(FDP.getTime()).putLong(FDP.getDataSize())
-                        .putShort(FDP.getTaskIdLength()).put(FDP.getTaskIdBytes());
+                buffer.put(FDP.getWay()).put(FDP.getType()).put(FDP.getAppendState()).putLong(FDP.getTime())
+                        .putLong(FDP.getDataSize()).putShort(FDP.getTaskIdLength()).put(FDP.getTaskIdBytes());
                 buffer.flip();
                 while (buffer.hasRemaining()) {
                     socketChannel.write(buffer);
@@ -105,8 +141,8 @@ public class FileHandler extends Handler {
                     }
                 }
             } else {
-                buffer.put(FDP.getWay()).put(FDP.getType()).putLong(FDP.getTime()).putLong(FDP.getFileSize())
-                        .putShort(FDP.getTaskIdLength()).put(FDP.getTaskIdBytes());
+                buffer.put(FDP.getWay()).put(FDP.getType()).put(FDP.getAppendState()).putLong(FDP.getTime())
+                        .putLong(FDP.getFileSize()).putShort(FDP.getTaskIdLength()).put(FDP.getTaskIdBytes());
                 buffer.flip();
                 while (buffer.hasRemaining()) {
                     socketChannel.write(buffer);
@@ -114,11 +150,19 @@ public class FileHandler extends Handler {
                 raf = new RandomAccessFile(FDP.getFile(), "r");
                 fileChannel = raf.getChannel();
                 long fileSize = FDP.getFileSize();
-                for (long residue = fileSize, writeCount = 0; residue > 0; residue -= writeCount) {
-                    writeCount = fileChannel.transferTo(fileSize - residue, residue, socketChannel);
-                    if (writeCount > 0) {
-                        NetLog.debug("发送文件中,剩余 [$],本次发送 [$]"
-                                , DataPackage.formatBytes(residue - writeCount), DataPackage.formatBytes(writeCount));
+                TransferSchedule transferSchedule = receiveScheduleHashMap.remove(FDP.getTaskId());
+                if (transferSchedule != null) {
+                    transferSchedule.showTransferSchedule(fileSize, fileSize);
+                    for (long residue = fileSize, writeCount = 0; residue > 0; residue -= writeCount) {
+                        writeCount = fileChannel.transferTo(fileSize - residue, residue, socketChannel);
+                        if (writeCount > 0) {
+                            transferSchedule.showTransferSchedule(fileSize, residue);
+                        }
+                    }
+                    transferSchedule.showTransferSchedule(fileSize, 0);
+                } else {
+                    for (long residue = fileSize, writeCount = 0; residue > 0; residue -= writeCount) {
+                        writeCount = fileChannel.transferTo(fileSize - residue, residue, socketChannel);
                     }
                 }
             }

@@ -1,13 +1,13 @@
-package client.handler;
+package net.handler;
 
-import client.Link;
-import client.datapackage.CommandPackage;
-import client.datapackage.DataPackage;
-import client.datapackage.FilePackage;
-import client.datapackage.MessagePackage;
-import client.log.NetLog;
-import client.util.LinkTable;
-import client.util.NetTool;
+import net.Link;
+import net.util.LinkTable;
+import net.datapackage.CommandPackage;
+import net.datapackage.DataPackage;
+import net.datapackage.FilePackage;
+import net.datapackage.MessagePackage;
+import net.log.NetLog;
+import net.util.NetTool;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -47,7 +47,8 @@ public class CommandHandler extends Handler{
                 }
             }
             buffer.flip();
-            CDP.setWay(buffer.get()).setType(buffer.get()).setTime(buffer.getLong()).setDataSize(buffer.getInt());
+            CDP.setWay(buffer.get()).setType(buffer.get()).setAppendState(buffer.get())
+                    .setTime(buffer.getLong()).setDataSize(buffer.getInt());
             byte[] taskIdBytes = new byte[buffer.getShort()];
             buffer = ByteBuffer.wrap(taskIdBytes);
             while (buffer.hasRemaining()) {
@@ -123,6 +124,7 @@ public class CommandHandler extends Handler{
                                     }
                                     link.putDataPackage(linkTable.getFileKey(), new FilePackage(DataPackage.WAY_TOKEN_VERIFY
                                             , linkTable.getToken().getBytes()));
+                                    linkTable.setFileLinkState(LinkTable.VERIFY);
                                     while (true) {
                                         FilePackage filePackage = linkTable.getFilePackage();
                                         if (filePackage != null) {
@@ -131,6 +133,7 @@ public class CommandHandler extends Handler{
                                                 link.putDataPackage(fileKey, filePackage);
                                             }
                                         } else {
+                                            linkTable.setFileLinkState(LinkTable.READY);
                                             return;
                                         }
                                     }
@@ -159,8 +162,8 @@ public class CommandHandler extends Handler{
         SocketChannel channel = (SocketChannel) key.channel();
         try {
             ByteBuffer buffer = ByteBuffer.allocate(CommandPackage.HEADER_SIZE + CDP.getTaskIdLength());
-            buffer.put(CDP.getWay()).put(CDP.getType()).putLong(CDP.getTime()).putInt(CDP.getDataSize())
-                    .putShort(CDP.getTaskIdLength()).put(CDP.getTaskIdBytes());
+            buffer.put(CDP.getWay()).put(CDP.getType()).put(CDP.getAppendState()).putLong(CDP.getTime())
+                    .putInt(CDP.getDataSize()).putShort(CDP.getTaskIdLength()).put(CDP.getTaskIdBytes());
             buffer.flip();
             while (buffer.hasRemaining()) {
                 channel.write(buffer);

@@ -1,10 +1,11 @@
-package client.datapackage;
+package net.datapackage;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 
 public class FilePackage extends DataPackage {
-    public static final int HEADER_SIZE = 20;
+    public static final int HEADER_SIZE = 21;
 
     private long fileSize;
     private File file;
@@ -45,6 +46,10 @@ public class FilePackage extends DataPackage {
     }
     public void setFileSize(long fileSize) {
         this.fileSize = fileSize;
+    }
+
+    public boolean moveFile(File destFile) {
+        return file.renameTo(destFile);
     }
 
     @Override

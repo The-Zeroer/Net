@@ -1,30 +1,31 @@
-package client;
+package net;
 
-import client.datapackage.CommandPackage;
-import client.datapackage.DataPackage;
-import client.exception.NetException;
-import client.exception.link.AgainLinkTimeOutException;
-import client.exception.link.ServerCloseLinkException;
-import client.exception.token.TokenMissingException;
-import client.handler.CommandHandler;
-import client.handler.FileHandler;
-import client.handler.Handler;
-import client.handler.MessageHandler;
-import client.log.NetLog;
-import client.util.LinkTable;
-import client.util.NetTool;
+import net.datapackage.CommandPackage;
+import net.datapackage.DataPackage;
+import net.datapackage.FilePackage;
+import net.datapackage.MessagePackage;
+import net.exception.NetException;
+import net.exception.link.AgainLinkTimeOutException;
+import net.exception.link.ServerCloseLinkException;
+import net.exception.token.TokenMissingException;
+import net.handler.CommandHandler;
+import net.handler.FileHandler;
+import net.handler.Handler;
+import net.handler.MessageHandler;
+import net.log.NetLog;
+import net.util.LinkTable;
+import net.util.NetTool;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
-import java.util.Iterator;
-import java.util.Queue;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.*;
 
 public class Link extends Thread{
+    private final NetClient netClient;
     private final Selector selector;
     private final LinkTable linkTable;
     private final ExecutorService workPool;
@@ -33,6 +34,7 @@ public class Link extends Thread{
     private final ConcurrentHashMap<SelectionKey, Handler> relevancyHashMap;
     private final ConcurrentHashMap<SelectionKey, Queue<DataPackage>> sendHashMap;
     private final ConcurrentLinkedQueue<DataPackage> receiveQueue;
+    private final ConcurrentHashMap<String, DataPackage> receiveHashMap;
     private final Set<SelectionKey> cancelSet;
     private final Object sendLock = new Object(), receiveLock = new Object();
     private InetSocketAddress serverAddress;
@@ -40,7 +42,8 @@ public class Link extends Thread{
 
     private final HeartBeat heartBeat;
 
-    public Link(LinkTable linkTable) throws IOException {
+    public Link(NetClient netClient, LinkTable linkTable) throws IOException {
+        this.netClient = netClient;
         this.linkTable = linkTable;
         selector = Selector.open();
         eventQueue = new ConcurrentLinkedQueue<>();
@@ -48,6 +51,7 @@ public class Link extends Thread{
         relevancyHashMap = new ConcurrentHashMap<>();
         sendHashMap = new ConcurrentHashMap<>();
         receiveQueue = new ConcurrentLinkedQueue<>();
+        receiveHashMap = new ConcurrentHashMap<>();
         cancelSet = ConcurrentHashMap.newKeySet();
 
         int poolSize = Runtime.getRuntime().availableProcessors();
@@ -254,6 +258,18 @@ public class Link extends Thread{
                 }
             }
         }
+        if (dataPackage.getAppendState() == DataPackage.APPEND_1) {
+            DataPackage DP = dataPackage.getAppendDataPackage();
+            if (DP.getTaskId() == null) {
+                DP.setTaskId(dataPackage.getTaskId());
+            }
+            switch (DP) {
+                case CommandPackage commandPackage -> netClient.putCommandPackage(commandPackage);
+                case MessagePackage messagePackage -> netClient.putMessagePackage(messagePackage);
+                case FilePackage filePackage -> netClient.putFilePackage(filePackage);
+                default -> throw new IllegalStateException();
+            }
+        }
     }
 
     public void receiveFinish(SelectionKey key) {
@@ -277,9 +293,30 @@ public class Link extends Thread{
         }
     }
     public void addDataPackage(DataPackage dataPackage) {
-        receiveQueue.add(dataPackage);
-        synchronized (receiveLock) {
-            receiveLock.notify();
+        if (dataPackage.getAppendState() == DataPackage.APPEND_1 || dataPackage.getAppendState() == DataPackage.APPEND_2) {
+            DataPackage tempDataPackage = receiveHashMap.remove(dataPackage.getTaskId());
+            if (tempDataPackage != null) {
+                if (tempDataPackage.getAppendState() == DataPackage.APPEND_1) {
+                    tempDataPackage.appendDataPackage(dataPackage);
+                    receiveQueue.add(tempDataPackage);
+                    synchronized (receiveLock) {
+                        receiveLock.notify();
+                    }
+                } else {
+                    dataPackage.appendDataPackage(tempDataPackage);
+                    receiveQueue.add(dataPackage);
+                    synchronized (receiveLock) {
+                        receiveLock.notify();
+                    }
+                }
+            } else {
+                receiveHashMap.put(dataPackage.getTaskId(), dataPackage);
+            }
+        } else {
+            receiveQueue.add(dataPackage);
+            synchronized (receiveLock) {
+                receiveLock.notify();
+            }
         }
     }
     public void addException(NetException netException) {
@@ -356,6 +393,7 @@ public class Link extends Thread{
                 this.key = key;
                 running = true;
                 heartBeatThread = new Thread(this);
+                heartBeatThread.setDaemon(true);
                 heartBeatThread.start();
             }
             NetLog.info("已开启心跳,间隔 [$] 秒", HEARTBEAT_INTERVAL / 1000);

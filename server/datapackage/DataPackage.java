@@ -1,4 +1,4 @@
-package server.datapackage;
+package net.datapackage;
 
 import java.io.IOException;
 import java.nio.channels.SelectionKey;
@@ -7,16 +7,18 @@ import java.text.SimpleDateFormat;
 
 public abstract class DataPackage {
     protected static final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
-    public static final int HEADER_SIZE = 16;
+    public static final int HEADER_SIZE = 17;
 
     protected byte way;
     protected byte type;
+    protected byte appendState;
     protected long time;
     protected int dataSize;
     protected short taskIdLength;
     protected byte[] taskId;
-
     protected byte[] data;
+
+    protected DataPackage appendDataPackage;
 
     protected String UID;
     protected SelectionKey key;
@@ -43,6 +45,23 @@ public abstract class DataPackage {
             this.data = data;
             dataSize += data.length;
         }
+    }
+
+    public DataPackage appendDataPackage(DataPackage dataPackage) {
+        this.appendState = APPEND_1;
+        this.appendDataPackage = dataPackage;
+        dataPackage.appendState = APPEND_2;
+        return this;
+    }
+    public DataPackage getAppendDataPackage() {
+        return appendDataPackage;
+    }
+    public DataPackage setAppendState(byte appendState) {
+        this.appendState = appendState;
+        return this;
+    }
+    public byte getAppendState() {
+        return appendState;
     }
 
     public byte getWay() {
@@ -171,6 +190,8 @@ public abstract class DataPackage {
     public static final byte WAY_TOKEN_VERIFY = 111;
     //建立连接
     public static final byte WAY_BUILD_LINK = 112;
+    // 检查更新
+    public static final byte WAY_CHECK_UPDATE = 120;
 
     //文本
     public static final byte TYPE_TEXT = 1;
@@ -210,4 +231,11 @@ public abstract class DataPackage {
     public static final byte TYPE_MESSAGE_ADDRESS = 100;
     //文件地址
     public static final byte TYPE_FILE_ADDRESS = 101;
+    // 更新文件
+    public static final byte TYPE_UPDATE_FILE = 120;
+
+    // 被附加
+    public static final byte APPEND_1 = 1;
+    // 是附加
+    public static final byte APPEND_2 = 2;
 }

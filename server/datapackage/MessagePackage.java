@@ -1,10 +1,10 @@
-package server.datapackage;
+package net.datapackage;
 
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
 
 public class MessagePackage extends DataPackage {
-    public static final int HEADER_SIZE = 20;
+    public static final int HEADER_SIZE = 21;
     private short senderLenght;
     private short receiverLenght;
     private byte[] sender;

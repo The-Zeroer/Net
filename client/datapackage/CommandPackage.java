@@ -1,4 +1,4 @@
-package client.datapackage;
+package net.datapackage;
 
 public class CommandPackage extends DataPackage {
 

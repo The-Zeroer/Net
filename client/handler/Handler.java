@@ -1,7 +1,7 @@
-package client.handler;
+package net.handler;
 
-import client.Link;
-import client.datapackage.DataPackage;
+import net.Link;
+import net.datapackage.DataPackage;
 
 import java.nio.channels.SelectionKey;
 

@@ -1,4 +1,4 @@
-package server.util;
+package net.util;
 
 public class TokenBucket {
     private final long capacity; // 桶的容量

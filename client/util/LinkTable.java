@@ -1,7 +1,7 @@
-package client.util;
+package net.util;
 
-import client.datapackage.FilePackage;
-import client.datapackage.MessagePackage;
+import net.datapackage.FilePackage;
+import net.datapackage.MessagePackage;
 
 import java.nio.channels.SelectionKey;
 import java.util.Map;

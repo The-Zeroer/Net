@@ -1,10 +1,10 @@
-package client.datapackage;
+package net.datapackage;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
 public class MessagePackage extends DataPackage {
-    public static final int HEADER_SIZE = 20;
+    public static final int HEADER_SIZE = 21;
     private short senderLenght;
     private short receiverLenght;
     private byte[] sender;

@@ -1,17 +1,17 @@
-package server;
+package net;
 
-import server.datapackage.CommandPackage;
-import server.datapackage.DataPackage;
-import server.datapackage.FilePackage;
-import server.datapackage.MessagePackage;
-import server.exception.NetException;
-import server.link.CommandLink;
-import server.link.FileLink;
-import server.link.MessageLink;
-import server.log.LogHandler;
-import server.log.NetLog;
-import server.util.LinkTable;
-import server.util.NetTool;
+import net.datapackage.CommandPackage;
+import net.datapackage.DataPackage;
+import net.datapackage.FilePackage;
+import net.datapackage.MessagePackage;
+import net.exception.NetException;
+import net.link.CommandLink;
+import net.link.FileLink;
+import net.link.MessageLink;
+import net.log.NetLogHandler;
+import net.log.NetLog;
+import net.util.LinkTable;
+import net.util.NetTool;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -33,13 +33,15 @@ public class NetServer {
         accept = new Accept();
         accept.setName("Accept");
         linkTable = new LinkTable();
-        commandLink = new CommandLink(linkTable);
+        commandLink = new CommandLink(this, linkTable);
         commandLink.setName("CommandLink");
-        messageLink = new MessageLink(linkTable);
+        messageLink = new MessageLink(this, linkTable);
         messageLink.setName("MessageLink");
-        fileLink = new FileLink(linkTable);
+        fileLink = new FileLink(this, linkTable);
         fileLink.setName("FileLink");
         linkTable.setLink(commandLink, messageLink, fileLink);
+        messageLink.setHeartBeatInterval(300);
+        fileLink.setHeartBeatInterval(600);
     }
 
     public void bindCommandPort(int port) throws IOException {
@@ -201,8 +203,8 @@ public class NetServer {
     public void setLogMaxCount(int maxCount) {
         NetLog.setMaxLogCount(maxCount);
     }
-    public void setLogHandler(LogHandler logHandler) {
-        NetLog.setLogHandler(logHandler);
+    public void setLogHandler(NetLogHandler netLogHandler) {
+        NetLog.setLogHandler(netLogHandler);
     }
 
     /**

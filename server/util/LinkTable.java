@@ -1,11 +1,12 @@
-package server.util;
+package net.util;
 
-import server.datapackage.FilePackage;
-import server.datapackage.MessagePackage;
-import server.link.CommandLink;
-import server.link.FileLink;
-import server.link.MessageLink;
-import server.log.NetLog;
+import net.datapackage.DataPackage;
+import net.datapackage.FilePackage;
+import net.datapackage.MessagePackage;
+import net.link.CommandLink;
+import net.link.FileLink;
+import net.link.MessageLink;
+import net.log.NetLog;
 
 import java.io.IOException;
 import java.nio.channels.SelectionKey;
@@ -22,7 +23,7 @@ public class LinkTable {
     private final ConcurrentHashMap<String, Byte> fileLinkStateHashMap;
     private final ConcurrentHashMap<String, ConcurrentLinkedQueue<MessagePackage>> messageQueueMap;
     private final ConcurrentHashMap<String, ConcurrentLinkedQueue<FilePackage>> fileQueueMap;
-    private final ConcurrentHashMap<SelectionKey, Long> lastActivityTime;
+    private final ConcurrentHashMap<String, DataPackage> receiveHashMap;
     private CommandLink commandLink;
     private MessageLink messageLink;
     private FileLink fileLink;
@@ -34,7 +35,7 @@ public class LinkTable {
         fileLinkStateHashMap = new ConcurrentHashMap<>();
         messageQueueMap = new ConcurrentHashMap<>();
         fileQueueMap = new ConcurrentHashMap<>();
-        lastActivityTime = new ConcurrentHashMap<>();
+        receiveHashMap = new ConcurrentHashMap<>();
     }
 
     public void setLink(CommandLink commandLink, MessageLink messageLink, FileLink fileLink) {
@@ -51,7 +52,6 @@ public class LinkTable {
         tokenHashMap.put(commandKey, temptokenMap);
         setMessageLinkStata(UID, LinkTable.LINK_1);
         setFileLinkStata(UID, LinkTable.LINK_1);
-        lastActivityTime.put(commandKey, System.currentTimeMillis());
         try {
             NetLog.info("UID [$] 已注册,并绑定连接 [$] (CommandLink) 及Token"
                     , UID, ((SocketChannel)commandKey.channel()).getRemoteAddress());
@@ -87,7 +87,6 @@ public class LinkTable {
                 }
                 commandLink.cancel(commandKey);
                 tokenHashMap.remove(commandKey);
-                lastActivityTime.remove(commandKey);
             }
             SelectionKey messageKey = tempkeyMap.get("messageKey");
             if (messageKey != null) {
@@ -99,7 +98,6 @@ public class LinkTable {
                 }
                 messageLink.cancel(messageKey);
                 tokenHashMap.remove(messageKey);
-                lastActivityTime.remove(messageKey);
             }
             SelectionKey fileKey = tempkeyMap.get("fileKey");
             if (fileKey != null) {
@@ -111,7 +109,6 @@ public class LinkTable {
                 }
                 fileLink.cancel(fileKey);
                 tokenHashMap.remove(fileKey);
-                lastActivityTime.remove(fileKey);
             }
             NetLog.info("UID [$] 已注销", UID);
         }
@@ -125,7 +122,6 @@ public class LinkTable {
             ConcurrentHashMap<String, SelectionKey> tempkeyMap = keyHashMap.get(UID);
             if (tempkeyMap != null) {
                 tempkeyMap.put("messageKey", messageKey);
-                lastActivityTime.put(messageKey, System.currentTimeMillis());
             }
             try {
                 NetLog.info("连接 [$] (MessageLink) 已关联UID [$]"
@@ -143,7 +139,6 @@ public class LinkTable {
             ConcurrentHashMap<String, SelectionKey> tempkeyMap = keyHashMap.get(UID);
             if (tempkeyMap != null) {
                 tempkeyMap.put("fileKey", fileKey);
-                lastActivityTime.put(fileKey, System.currentTimeMillis());
             }
             try {
                 NetLog.info("连接 [$] (FileLink) 已关联UID [$]"
@@ -161,7 +156,6 @@ public class LinkTable {
             ConcurrentHashMap<String, SelectionKey> tempkeyMap = keyHashMap.get(UID);
             if (tempkeyMap != null) {
                 tempkeyMap.remove("messageKey");
-                lastActivityTime.remove(messageKey);
             }
             try {
                 NetLog.info("连接 [$] (MessageLink) 已解除关联UID [$]"
@@ -179,7 +173,6 @@ public class LinkTable {
             ConcurrentHashMap<String, SelectionKey> tempkeyMap = keyHashMap.get(UID);
             if (tempkeyMap != null) {
                 tempkeyMap.remove("fileKey");
-                lastActivityTime.remove(fileKey);
             }
             try {
                 NetLog.info("连接 [$] (FileLink) 已解除关联UID [$]"
@@ -270,16 +263,6 @@ public class LinkTable {
         return filePackage;
     }
 
-    public void updateLastActivityTime(SelectionKey key) {
-        lastActivityTime.put(key, System.currentTimeMillis());
-    }
-    public Set<Map.Entry<SelectionKey, Long>> getLastActivityTime() {
-        return lastActivityTime.entrySet();
-    }
-    public void removeLastActivityTime(SelectionKey key) {
-        lastActivityTime.remove(key);
-    }
-
     public CommandLink getCommandLink() {
         return commandLink;
     }
@@ -288,6 +271,13 @@ public class LinkTable {
     }
     public FileLink getFileLink() {
         return fileLink;
+    }
+
+    public void putAppendDataPackage(String taskId, DataPackage dataPackage) {
+        receiveHashMap.put(taskId, dataPackage);
+    }
+    public DataPackage getAppendDataPackage(String taskId) {
+        return receiveHashMap.remove(taskId);
     }
 
     // 未连接

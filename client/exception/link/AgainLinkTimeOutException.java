@@ -1,6 +1,6 @@
-package client.exception.link;
+package net.exception.link;
 
-import client.exception.NetException;
+import net.exception.NetException;
 
 public class AgainLinkTimeOutException extends NetException {
 

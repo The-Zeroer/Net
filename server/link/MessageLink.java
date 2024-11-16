@@ -1,9 +1,10 @@
-package server.link;
+package net.link;
 
-import server.datapackage.DataPackage;
-import server.datapackage.MessagePackage;
-import server.log.NetLog;
-import server.util.LinkTable;
+import net.NetServer;
+import net.util.LinkTable;
+import net.datapackage.DataPackage;
+import net.datapackage.MessagePackage;
+import net.log.NetLog;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -12,8 +13,8 @@ import java.nio.channels.SocketChannel;
 
 public class MessageLink extends Link {
     private static final int BUFFER_MAX_SIZE = 8*1024;
-    public MessageLink(LinkTable linkTable) throws IOException {
-        super(linkTable);
+    public MessageLink(NetServer netServer, LinkTable linkTable) throws IOException {
+        super(netServer, linkTable);
     }
 
     @Override
@@ -29,21 +30,22 @@ public class MessageLink extends Link {
                 }
             }
             buffer.flip();
-            MDP.setWay(buffer.get()).setType(buffer.get()).setTime(buffer.getLong()).setDataSize(buffer.getInt());
+            MDP.setWay(buffer.get()).setType(buffer.get()).setAppendState(buffer.get())
+                    .setTime(buffer.getLong()).setDataSize(buffer.getInt());
             if (MDP.getWay() != DataPackage.WAY_TOKEN_VERIFY && linkTable.getTokenByMessageKey(key) == null) {
                 NetLog.warn("连接 [$] (MessageLink) 无Token,已断开", channel.getRemoteAddress());
                 canelMessageLink(key);
                 return;
             }
-            byte[] taskIdBytes = new byte[buffer.getShort()];
             byte[] senderBytes = new byte[buffer.getShort()];
             byte[] receiverBytes = new byte[buffer.getShort()];
-            buffer = ByteBuffer.allocate(taskIdBytes.length + senderBytes.length + receiverBytes.length);
+            byte[] taskIdBytes = new byte[buffer.getShort()];
+            buffer = ByteBuffer.allocate(senderBytes.length + receiverBytes.length + taskIdBytes.length);
             while (buffer.hasRemaining()) {
                 channel.read(buffer);
             }
             buffer.flip();
-            buffer.get(taskIdBytes).get(senderBytes).get(receiverBytes);
+            buffer.get(senderBytes).get(receiverBytes).get(taskIdBytes);
             MDP.setSender(new String(senderBytes)).setReceiver(new String(receiverBytes)).setTaskId(new String(taskIdBytes));
             int dataSize = MDP.getDataSize();
             if (dataSize > 0) {
@@ -63,6 +65,7 @@ public class MessageLink extends Link {
                 }
                 MDP.setData(data);
             }
+            MDP.setSelectionKey(key).setUID(linkTable.getUIDByMessageKey(key));
 
             if (MDP.getWay() == DataPackage.WAY_TOKEN_VERIFY) {
                 String token = new String(MDP.getData());
@@ -94,7 +97,6 @@ public class MessageLink extends Link {
                 addDataPackage(MDP);
             }
 
-            MDP.setSelectionKey(key).setUID(linkTable.getUIDByMessageKey(key));
             NetLog.debug("接收 {$}", MDP);
         } catch (IOException e) {
             canelMessageLink(key);
@@ -110,9 +112,9 @@ public class MessageLink extends Link {
         try {
             ByteBuffer buffer = ByteBuffer.allocate(MessagePackage.HEADER_SIZE
                     + MDP.getTaskIdLength() + MDP.getSenderLenght() + MDP.getReceiverLenght());
-            buffer.put(MDP.getWay()).put(MDP.getType()).putLong(MDP.getTime()).putInt(MDP.getDataSize())
-                    .putShort(MDP.getTaskIdLength()).putShort(MDP.getSenderLenght()).putShort(MDP.getReceiverLenght())
-                    .put(MDP.getTaskIdBytes()).put(MDP.getSenderBytes()).put(MDP.getReceiverBytes());
+            buffer.put(MDP.getWay()).put(MDP.getType()).put(MDP.getAppendState()).putLong(MDP.getTime()).putInt(MDP.getDataSize())
+                    .putShort(MDP.getSenderLenght()).putShort(MDP.getReceiverLenght()).putShort(MDP.getTaskIdLength())
+                    .put(MDP.getSenderBytes()).put(MDP.getReceiverBytes()).put(MDP.getTaskIdBytes());
             buffer.flip();
             while (buffer.hasRemaining()) {
                 channel.write(buffer);
@@ -129,9 +131,9 @@ public class MessageLink extends Link {
                     buffer.clear();
                 }
             }
-            NetLog.debug("发送成功 {$}", MDP);
+            NetLog.debug("发送 {$} 成功", MDP);
         } catch (IOException e) {
-            NetLog.error("发送失败 {$}", MDP);
+            NetLog.error("发送 {$} 失败", MDP);
             canelMessageLink(key);
         } finally {
             sendFinish(key);

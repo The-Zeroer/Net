@@ -1,4 +1,4 @@
-package server.log;
+package net.log;
 
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -10,8 +10,8 @@ public class NetLog extends Thread {
     public static final byte off = 5;
 
     private static final NetLog instance = new NetLog();
-    private static ConcurrentLinkedQueue<LogPackage> logQueue;
-    private static LogHandler logHandler;
+    private static ConcurrentLinkedQueue<NetLogPackage> logQueue;
+    private static NetLogHandler netLogHandler;
     private static int maxLogCount, logCount;
     private static byte level;
     private static final Object lock = new Object();
@@ -31,8 +31,8 @@ public class NetLog extends Thread {
         NetLog.maxLogCount = maxLogCount;
     }
 
-    public static void setLogHandler(LogHandler logHandler){
-        NetLog.logHandler = logHandler;
+    public static void setLogHandler(NetLogHandler netLogHandler){
+        NetLog.netLogHandler = netLogHandler;
     }
 
     public static void debug(String msg, Object... args){
@@ -68,7 +68,7 @@ public class NetLog extends Thread {
                     return;
                 }
             }
-            logQueue.add(new LogPackage(System.currentTimeMillis(), e));
+            logQueue.add(new NetLogPackage(System.currentTimeMillis(), e));
             if (!handling) {
                 synchronized (lock) {
                     lock.notify();
@@ -85,7 +85,7 @@ public class NetLog extends Thread {
                 return;
             }
         }
-        logQueue.add(new LogPackage(System.currentTimeMillis(), level, msg, args));
+        logQueue.add(new NetLogPackage(System.currentTimeMillis(), level, msg, args));
         if (!handling) {
             synchronized (lock) {
                 lock.notify();
@@ -106,10 +106,10 @@ public class NetLog extends Thread {
                 }
             }
             while(!logQueue.isEmpty()){
-                if (logHandler != null) {
-                    LogPackage logPackage = logQueue.poll();
-                    if (logPackage != null) {
-                        logHandler.handle(logPackage);
+                if (netLogHandler != null) {
+                    NetLogPackage netLogPackage = logQueue.poll();
+                    if (netLogPackage != null) {
+                        netLogHandler.handle(netLogPackage);
                         synchronized (NetLog.class) {
                             logCount--;
                         }

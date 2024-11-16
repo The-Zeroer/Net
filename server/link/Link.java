@@ -1,11 +1,15 @@
-package server.link;
+package net.link;
 
-import server.datapackage.DataPackage;
-import server.exception.NetException;
-import server.log.NetLog;
-import server.util.LinkTable;
-import server.util.NetTool;
-import server.util.TokenBucket;
+import net.NetServer;
+import net.datapackage.CommandPackage;
+import net.datapackage.FilePackage;
+import net.datapackage.MessagePackage;
+import net.util.LinkTable;
+import net.datapackage.DataPackage;
+import net.exception.NetException;
+import net.log.NetLog;
+import net.util.NetTool;
+import net.util.TokenBucket;
 
 import java.io.IOException;
 import java.net.SocketAddress;
@@ -21,6 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 
 public abstract class Link extends Thread{
+    protected final NetServer netServer;
     protected final Selector selector;
     protected final LinkTable linkTable;
     protected final ExecutorService workPool;
@@ -37,7 +42,8 @@ public abstract class Link extends Thread{
 
     protected final HeartBeat heartBeat;
 
-    public Link(LinkTable linkTable) throws IOException {
+    public Link(NetServer netServer, LinkTable linkTable) throws IOException {
+        this.netServer = netServer;
         this.linkTable = linkTable;
         selector = Selector.open();
         eventQueue = new ConcurrentLinkedQueue<>();
@@ -212,6 +218,18 @@ public abstract class Link extends Thread{
                 }
             }
         }
+        if (dataPackage.getAppendState() == DataPackage.APPEND_1) {
+            DataPackage DP = dataPackage.getAppendDataPackage();
+            if (DP.getTaskId() == null) {
+                DP.setTaskId(dataPackage.getTaskId());
+            }
+            switch (DP) {
+                case CommandPackage commandPackage -> netServer.putCommandPackage(dataPackage.getUID(), commandPackage);
+                case MessagePackage messagePackage -> netServer.putMessagePackage(dataPackage.getUID(), messagePackage);
+                case FilePackage filePackage -> netServer.putFilePackage(dataPackage.getUID(), filePackage);
+                default -> throw new IllegalStateException();
+            }
+        }
     }
 
     protected void receiveFinish(SelectionKey key) {
@@ -238,9 +256,46 @@ public abstract class Link extends Thread{
         }
     }
     protected void addDataPackage(DataPackage dataPackage) {
-        receiveQueue.add(dataPackage);
-        synchronized (receiveLock) {
-            receiveLock.notify();
+        if (dataPackage.getAppendState() == DataPackage.APPEND_1 || dataPackage.getAppendState() == DataPackage.APPEND_2) {
+            synchronized (dataPackage.getUID()) {
+                DataPackage tempDataPackage = linkTable.getAppendDataPackage(dataPackage.getTaskId());
+                if (tempDataPackage != null) {
+                    DataPackage DP;
+                    if (tempDataPackage.getAppendState() == DataPackage.APPEND_1) {
+                        DP = tempDataPackage.appendDataPackage(dataPackage);
+                    } else {
+                        DP = dataPackage.appendDataPackage(tempDataPackage);
+                    }
+                    switch (DP) {
+                        case CommandPackage commandPackage -> {
+                            linkTable.getCommandLink().receiveQueue.add(commandPackage);
+                            synchronized (linkTable.getCommandLink().receiveLock) {
+                                linkTable.getCommandLink().receiveLock.notify();
+                            }
+                        }
+                        case MessagePackage messagePackage -> {
+                            linkTable.getMessageLink().receiveQueue.add(messagePackage);
+                            synchronized (linkTable.getMessageLink().receiveLock) {
+                                linkTable.getMessageLink().receiveLock.notify();
+                            }
+                        }
+                        case FilePackage filePackage -> {
+                            linkTable.getFileLink().receiveQueue.add(filePackage);
+                            synchronized (linkTable.getFileLink().receiveLock) {
+                                linkTable.getFileLink().receiveLock.notify();
+                            }
+                        }
+                        default -> throw new IllegalStateException();
+                    }
+                } else {
+                    linkTable.putAppendDataPackage(dataPackage.getTaskId(), dataPackage);
+                }
+            }
+        } else {
+            receiveQueue.add(dataPackage);
+            synchronized (receiveLock) {
+                receiveLock.notify();
+            }
         }
     }
 

@@ -1,6 +1,6 @@
-package client.util;
+package net.util;
 
-import client.datapackage.DataPackage;
+import net.datapackage.DataPackage;
 
 public abstract class Task implements Runnable{
     private final Object lock = new Object();
@@ -26,7 +26,7 @@ public abstract class Task implements Runnable{
     public void handleData(DataPackage data) {
         synchronized (lock) {
             this.data = data;
-            lock.notify();
+            lock.notifyAll();
         }
     }
 

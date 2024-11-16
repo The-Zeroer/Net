@@ -1,9 +1,10 @@
-package server.link;
+package net.link;
 
-import server.datapackage.CommandPackage;
-import server.datapackage.DataPackage;
-import server.log.NetLog;
-import server.util.LinkTable;
+import net.NetServer;
+import net.util.LinkTable;
+import net.datapackage.CommandPackage;
+import net.datapackage.DataPackage;
+import net.log.NetLog;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -14,8 +15,8 @@ public class CommandLink extends Link {
     private static final int BUFFER_MAX_SIZE = 8*1024;
     private String messageAddress, fileAddress;
 
-    public CommandLink(LinkTable linkTable) throws IOException {
-        super(linkTable);
+    public CommandLink(NetServer netServer, LinkTable linkTable) throws IOException {
+        super(netServer, linkTable);
     }
 
     public void setMessageAddress(String messageAddress) {
@@ -38,7 +39,8 @@ public class CommandLink extends Link {
                 }
             }
             buffer.flip();
-            CDP.setWay(buffer.get()).setType(buffer.get()).setTime(buffer.getLong()).setDataSize(buffer.getInt());
+            CDP.setWay(buffer.get()).setType(buffer.get()).setAppendState(buffer.get())
+                    .setTime(buffer.getLong()).setDataSize(buffer.getInt());
             // 验证Token
             if (CDP.getWay() != DataPackage.WAY_LOGIN && CDP.getWay() != DataPackage.WAY_TOKEN_VERIFY
                     && CDP.getWay() != DataPackage.WAY_HEART_BEAT && linkTable.getTokenByCommandKey(key) == null) {
@@ -72,21 +74,25 @@ public class CommandLink extends Link {
                 }
                 CDP.setData(data);
             }
+            CDP.setSelectionKey(key).setUID(linkTable.getUIDByCommandKey(key));
 
             switch (CDP.getWay()) {
                 case DataPackage.WAY_HEART_BEAT -> {}
 
                 case DataPackage.WAY_BUILD_LINK -> {
+                    String UID = linkTable.getUIDByCommandKey(key);
                     switch (CDP.getType()) {
                         case DataPackage.TYPE_MESSAGE_ADDRESS -> {
                             putDataPackage(key, new CommandPackage(DataPackage.WAY_BUILD_LINK
                                     , DataPackage.TYPE_MESSAGE_ADDRESS, messageAddress.getBytes())
-                                    .setSelectionKey(key).setUID(linkTable.getUIDByCommandKey(key)));
+                                    .setSelectionKey(key).setUID(UID));
+                            linkTable.setMessageLinkStata(UID, LinkTable.LINK_2);
                         }
                         case DataPackage.TYPE_FILE_ADDRESS -> {
                             putDataPackage(key, new CommandPackage(DataPackage.WAY_BUILD_LINK
                                     , DataPackage.TYPE_FILE_ADDRESS, fileAddress.getBytes())
-                                    .setSelectionKey(key).setUID(linkTable.getUIDByCommandKey(key)));
+                                    .setSelectionKey(key).setUID(UID));
+                            linkTable.setFileLinkStata(UID, LinkTable.LINK_2);
                         }
                     }
                 }
@@ -107,7 +113,6 @@ public class CommandLink extends Link {
                 }
             }
 
-            CDP.setSelectionKey(key).setUID(linkTable.getUIDByCommandKey(key));
             NetLog.debug("接收 {$}", CDP);
         } catch (IOException e) {
             cancelCommandLink(key);
@@ -122,8 +127,8 @@ public class CommandLink extends Link {
         CommandPackage CDP = (CommandPackage) dataPackage;
         try {
             ByteBuffer buffer = ByteBuffer.allocate(CommandPackage.HEADER_SIZE + CDP.getTaskIdLength());
-            buffer.put(CDP.getWay()).put(CDP.getType()).putLong(CDP.getTime()).putInt(CDP.getDataSize())
-                    .putShort(CDP.getTaskIdLength()).put(CDP.getTaskIdBytes());
+            buffer.put(CDP.getWay()).put(CDP.getType()).put(CDP.getAppendState()).putLong(CDP.getTime())
+                    .putInt(CDP.getDataSize()).putShort(CDP.getTaskIdLength()).put(CDP.getTaskIdBytes());
             buffer.flip();
             while (buffer.hasRemaining()) {
                 channel.write(buffer);
@@ -140,9 +145,9 @@ public class CommandLink extends Link {
                     buffer.clear();
                 }
             }
-            NetLog.debug("发送成功 {$}", CDP);
+            NetLog.debug("发送 {$} 成功", CDP);
         } catch (IOException e) {
-            NetLog.error("发送失败 {$}", CDP);
+            NetLog.error("发送 {$} 失败", CDP);
             cancelCommandLink(key);
         } finally {
             sendFinish(key);

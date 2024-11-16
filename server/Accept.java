@@ -1,8 +1,8 @@
-package server;
+package net;
 
-import server.link.Link;
-import server.log.NetLog;
-import server.util.TokenBucket;
+import net.link.Link;
+import net.log.NetLog;
+import net.util.TokenBucket;
 
 import java.io.IOException;
 import java.net.InetAddress;

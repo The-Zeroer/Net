@@ -1,4 +1,4 @@
-package server.datapackage;
+package net.datapackage;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -6,7 +6,7 @@ import java.io.IOException;
 import java.nio.channels.SocketChannel;
 
 public class FilePackage extends DataPackage {
-    public static final int HEADER_SIZE = 20;
+    public static final int HEADER_SIZE = 21;
     private long fileSize;
     private File file;
 
@@ -26,7 +26,7 @@ public class FilePackage extends DataPackage {
         }
     }
 
-    public FilePackage(byte way, byte type, File file) throws FileNotFoundException {
+    public FilePackage(byte way, byte type, File file) {
         this.way = way;
         this.type = type;
         this.time = System.currentTimeMillis();
@@ -34,8 +34,6 @@ public class FilePackage extends DataPackage {
         if (file != null && file.exists()) {
             this.file = file;
             fileSize = file.length();
-        } else {
-            throw new FileNotFoundException();
         }
     }
 
@@ -51,6 +49,10 @@ public class FilePackage extends DataPackage {
     }
     public void setFileSize(long fileSize) {
         this.fileSize = fileSize;
+    }
+
+    public boolean moveFile(File destFile) throws IOException {
+        return file.renameTo(destFile);
     }
 
     @Override

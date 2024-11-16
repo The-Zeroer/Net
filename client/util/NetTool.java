@@ -1,4 +1,4 @@
-package client.util;
+package net.util;
 
 import java.io.File;
 import java.io.FileInputStream;

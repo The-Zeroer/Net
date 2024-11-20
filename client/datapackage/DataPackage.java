@@ -129,78 +129,80 @@ public abstract class DataPackage {
         }
     }
 
-    //注册
+    // 注册
     public static final byte WAY_REGISTER = 1;
-    //注销
+    // 注销
     public static final byte WAY_CANCEL = 2;
-    //登录
+    // 登录
     public static final byte WAY_LOGIN = 3;
-    //登出
+    // 登出
     public static final byte WAY_LOGOUT = 4;
-    //发送数据
+    // 发送数据
     public static final byte WAY_SEND_DATA = 10;
-    //请求数据
+    // 请求数据
     public static final byte WAY_REQUEST_DATA = 11;
-    //修改数据
+    // 修改数据
     public static final byte WAY_CHANGE_DATA = 12;
-    //重置数据
+    // 重置数据
     public static final byte WAY_RESET_DATA = 13;
-    //在线聊天消息
-    public static final byte WAY_ONLINE_MESSAGE = 20;
-    //离线聊天消息
-    public static final byte WAY_OFFLINE_MESSAGE = 21;
-    //请求聊天消息
-    public static final byte WAY_REQUEST_MESSAGE = 22;
-    //正常响应
+    // 发送聊天消息
+    public static final byte WAY_SEND_MESSAGE = 20;
+    // 请求聊天消息
+    public static final byte WAY_REQUEST_MESSAGE = 21;
+    // 在线聊天消息
+    public static final byte WAY_ONLINE_MESSAGE = 22;
+    // 离线聊天消息
+    public static final byte WAY_OFFLINE_MESSAGE = 23;
+    // 正常响应
     public static final byte WAY_OK = 100;
-    //错误响应
+    // 错误响应
     public static final byte WAY_ERROR = 101;
-    //心跳包
+    // 心跳包
     public static final byte WAY_HEART_BEAT = 110;
-    //Token验证
+    // Token验证
     public static final byte WAY_TOKEN_VERIFY = 111;
-    //建立连接
+    // 建立连接
     public static final byte WAY_BUILD_LINK = 112;
     // 检查更新
     public static final byte WAY_CHECK_UPDATE = 120;
 
-    //文本
+    // 文本
     public static final byte TYPE_TEXT = 1;
-    //文件
+    // 文件
     public static final byte TYPE_FILE = 2;
-    //原图
+    // 原图
     public static final byte TYPE_IMAGE_ORIGINAL = 5;
-    //缩略图
+    // 缩略图
     public static final byte TYPE_IMAGE_THUMBNAIL = 6;
-    //图标资源
+    // 图标资源
     public static final byte TYPE_RESOURCE_ICON = 10;
-    //背景资源
+    // 背景资源
     public static final byte TYPE_RESOURCE_BACKDROP = 11;
-    //音频资源
+    // 音频资源
     public static final byte TYPE_RESOURCE_AUDIO = 12;
-    //头像原图
+    // 头像原图
     public static final byte TYPE_HEAD_ORIGINAL = 15;
-    //头像缩略图
+    // 头像缩略图
     public static final byte TYPE_HEAD_THUMBNAIL = 16;
-    //用户基础信息
+    // 用户基础信息
     public static final byte TYPE_USER_BASE_INFO = 20;
-    //用户密码
+    // 用户密码
     public static final byte TYPE_USER_PASSWORD = 21;
-    //用户名
+    // 用户名
     public static final byte TYPE_USER_NAME = 22;
-    //用户联系人信息
+    // 用户联系人信息
     public static final byte TYPE_USER_CONTACTS_INFO = 23;
-    //用户群聊信息
+    // 用户群聊信息
     public static final byte TYPE_USER_GROUP_INFO = 24;
-    //群用户
+    // 群用户
     public static final byte TYPE_GROUP_USER = 30;
-    //组织架构
+    // 组织架构
     public static final byte TYPE_ORG_STRUCTURE = 40;
-    //所有用户信息
+    // 所有用户信息
     public static final byte TYPE_ALLUSER_INFO = 41;
-    //消息地址
+    // 消息地址
     public static final byte TYPE_MESSAGE_ADDRESS = 100;
-    //文件地址
+    // 文件地址
     public static final byte TYPE_FILE_ADDRESS = 101;
     // 更新文件
     public static final byte TYPE_UPDATE_FILE = 120;

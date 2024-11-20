@@ -10,15 +10,17 @@ public class MessagePackage extends DataPackage {
     private byte[] sender;
     private byte[] receiver;
 
+    private String messageId;
+
     public MessagePackage() {}
 
-    public MessagePackage(byte way, byte type, String sender, String receiver, byte[] data) {
+    public MessagePackage(byte way, byte type, String sender, String receiver, String text) {
         this.way = way;
         this.type = type;
         this.sender = sender.getBytes();
         this.receiver = receiver.getBytes();
-        if (data != null) {
-            this.data = data;
+        if (text != null) {
+            this.data = text.getBytes();
             dataSize = data.length;
         } else {
             dataSize = 0;
@@ -58,11 +60,25 @@ public class MessagePackage extends DataPackage {
         receiverLenght = (short) this.receiver.length;
         return this;
     }
+    public String getContent() {
+        if (data != null) {
+            return new String(data);
+        } else {
+            return "";
+        }
+    }
     public byte[] getSenderBytes() {
         return sender;
     }
     public byte[] getReceiverBytes() {
         return receiver;
+    }
+
+    public String getMessageId() {
+        return messageId;
+    }
+    public void setMessageId(String messageId) {
+        this.messageId = messageId;
     }
 
     @Override

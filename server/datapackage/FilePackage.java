@@ -1,5 +1,7 @@
 package net.datapackage;
 
+import net.util.NetTool;
+
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -45,14 +47,21 @@ public class FilePackage extends DataPackage {
     }
     public FilePackage setFile(File file) {
         this.file = file;
+        this.fileSize = file.length();
         return this;
     }
     public void setFileSize(long fileSize) {
         this.fileSize = fileSize;
     }
 
-    public boolean moveFile(File destFile) throws IOException {
-        return file.renameTo(destFile);
+    public boolean moveFile(File destFile) {
+        try {
+            NetTool.moveFile(file, destFile);
+            file = destFile;
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     @Override

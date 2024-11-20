@@ -46,7 +46,12 @@ public class NetClient {
     public void openLink(String host, int port) throws IOException {
         NetLog.info("正在连接服务器 [$:$]", host, port);
         SocketChannel socketChannel = SocketChannel.open(new InetSocketAddress(host, port));
+        link.start();
         link.register(socketChannel, commandHandler);
+    }
+    public void closeLink() {
+        putCommandPackage(new CommandPackage(DataPackage.WAY_LOGOUT));
+        link.stop(0);
     }
 
     public synchronized void putCommandPackage(CommandPackage commandPackage) {

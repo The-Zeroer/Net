@@ -220,8 +220,9 @@ public abstract class Link extends Thread{
         }
         if (dataPackage.getAppendState() == DataPackage.APPEND_1) {
             DataPackage DP = dataPackage.getAppendDataPackage();
-            if (DP.getTaskId() == null) {
-                DP.setTaskId(dataPackage.getTaskId());
+            String taskId = dataPackage.getTaskId();
+            if (!taskId.equals(DP.getTaskId())) {
+                DP.setTaskId(taskId);
             }
             switch (DP) {
                 case CommandPackage commandPackage -> netServer.putCommandPackage(dataPackage.getUID(), commandPackage);
@@ -262,9 +263,9 @@ public abstract class Link extends Thread{
                 if (tempDataPackage != null) {
                     DataPackage DP;
                     if (tempDataPackage.getAppendState() == DataPackage.APPEND_1) {
-                        DP = tempDataPackage.appendDataPackage(dataPackage);
+                        DP = tempDataPackage.addAppendDataPackage(dataPackage);
                     } else {
-                        DP = dataPackage.appendDataPackage(tempDataPackage);
+                        DP = dataPackage.addAppendDataPackage(tempDataPackage);
                     }
                     switch (DP) {
                         case CommandPackage commandPackage -> {
@@ -340,6 +341,7 @@ public abstract class Link extends Thread{
                     for (Map.Entry<SelectionKey, Long> entry : lastActivityTime.entrySet()) {
                         if (nowTime - entry.getValue() > HEARTBEAT_INTERVAL) {
                             breakLink(entry.getKey());
+                            lastActivityTime.remove(entry.getKey());
                         }
                     }
                 }
@@ -364,7 +366,7 @@ public abstract class Link extends Thread{
                 cancel(key);
                 extraDisposeTimeOutLink(key);
             } else {
-                removeLastActivityTime(key);
+                lastActivityTime.remove(key);
             }
         }
     }

@@ -2,6 +2,7 @@ package net.util;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
@@ -53,5 +54,34 @@ public class NetTool {
         fis.close();
         fc.close();
         return new BigInteger(1, digest.digest()).toString(16);
+    }
+
+    public static void moveFile(File srcFile, File destFile) throws IOException {
+        FileChannel srcChannel = null, destChannel = null;
+        FileOutputStream fos = null;
+        FileInputStream fis = null;
+        try {
+            fis = new FileInputStream(srcFile);
+            srcChannel = fis.getChannel();
+            fos = new FileOutputStream(destFile);
+            destChannel = fos.getChannel();
+            for (long residue = srcFile.length() ,fileSize = residue; residue > 0; ) {
+                residue -= srcChannel.transferTo(fileSize - residue, residue, destChannel);
+            }
+            srcFile.delete();
+        } finally {
+            if (fos != null) {
+                fos.close();
+            }
+            if (fis != null) {
+                fis.close();
+            }
+            if (srcChannel != null) {
+                srcChannel.close();
+            }
+            if (destChannel != null) {
+                destChannel.close();
+            }
+        }
     }
 }

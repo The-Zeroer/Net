@@ -23,6 +23,7 @@ import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Link extends Thread{
     private final NetClient netClient;
@@ -31,6 +32,7 @@ public class Link extends Thread{
     private final ExecutorService workPool;
     private final ConcurrentLinkedQueue<Runnable> eventQueue;
     private final ConcurrentLinkedQueue<NetException> exceptionQueue;
+    private final ConcurrentHashMap<SelectionKey, AtomicBoolean> sendingStateHashMap;
     private final ConcurrentHashMap<SelectionKey, Handler> relevancyHashMap;
     private final ConcurrentHashMap<SelectionKey, Queue<DataPackage>> sendHashMap;
     private final ConcurrentLinkedQueue<DataPackage> receiveQueue;
@@ -48,6 +50,7 @@ public class Link extends Thread{
         selector = Selector.open();
         eventQueue = new ConcurrentLinkedQueue<>();
         exceptionQueue = new ConcurrentLinkedQueue<>();
+        sendingStateHashMap = new ConcurrentHashMap<>();
         relevancyHashMap = new ConcurrentHashMap<>();
         sendHashMap = new ConcurrentHashMap<>();
         receiveQueue = new ConcurrentLinkedQueue<>();
@@ -60,14 +63,21 @@ public class Link extends Thread{
         workPool = new ThreadPoolExecutor(6, poolSize*2, 180, TimeUnit.SECONDS, queue, policy);
 
         heartBeat = new HeartBeat();
+    }
 
+    @Override
+    public void start() {
         running = true;
-        this.start();
+        super.start();
+    }
+
+    public void stop(int ... i) {
+        running = false;
     }
 
     @Override
     public void run() {
-        while (running) {
+        while (running || !sendHashMap.isEmpty()) {
             try {
                 while (eventQueue.isEmpty() && selector.select() > 0) {
                     extracted();
@@ -104,12 +114,15 @@ public class Link extends Thread{
                 if (sendQueue != null) {
                     DataPackage dataPackage = sendQueue.poll();
                     if (dataPackage != null) {
-                        key.interestOps(key.interestOps() & ~SelectionKey.OP_WRITE);
-                        if (handler instanceof CommandHandler) {
-                            heartBeat.upDateLastActivityTime();
+                        if (sendingStateHashMap.get(key).compareAndSet(false, true)) {
+                            key.interestOps(key.interestOps() & ~SelectionKey.OP_WRITE);
+                            if (handler instanceof CommandHandler) {
+                                heartBeat.upDateLastActivityTime();
+                            }
+                            workPool.submit(() -> {handler.sendHandle(key, dataPackage);});
                         }
-                        workPool.submit(() -> {handler.sendHandle(key, dataPackage);});
-                    } else {
+                    }
+                    if (sendQueue.isEmpty()) {
                         sendHashMap.remove(key);
                         key.interestOps(key.interestOps() & ~SelectionKey.OP_WRITE);
                     }
@@ -131,6 +144,7 @@ public class Link extends Thread{
         eventQueue.add(() -> {
             try {
                 SelectionKey key = socketChannel.register(selector, SelectionKey.OP_READ);
+                sendingStateHashMap.put(key, new AtomicBoolean(false));
                 relevancyHashMap.put(key, handler);
                 switch (handler) {
                     case CommandHandler commandHandler -> {
@@ -159,10 +173,9 @@ public class Link extends Thread{
     public synchronized void cancel(SelectionKey key, boolean againLink) {
         linkTable.removeLastActivityTime(key);
         sendHashMap.remove(key);
-        Handler handler = relevancyHashMap.remove(key);
-        if (handler != null) {
+        if (sendingStateHashMap.remove(key) != null) {
             cancelSet.add(key);
-            switch (handler) {
+            switch (relevancyHashMap.remove(key)) {
                 case CommandHandler commandHandler -> {
                     NetLog.info("连接 [CommandLink] 已断开");
                     linkTable.removeCommandKey();
@@ -234,21 +247,26 @@ public class Link extends Thread{
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 } finally {
-                    throwException();
+                    if (running) {
+                        throwException();
+                    }
                 }
             }
             return receiveQueue.poll();
         }
     }
     public void putDataPackage(SelectionKey key, DataPackage dataPackage) {
+        if (!running) {
+            return;
+        }
         if (dataPackage.getTaskId() == null) {
             dataPackage.setTaskId(NetTool.produceTaskId());
         }
         synchronized (sendLock) {
-            if (key != null && key.isValid()) {
+            if (key != null && key.isValid() && sendingStateHashMap.containsKey(key)) {
                 Queue<DataPackage> sendQueue = sendHashMap.computeIfAbsent(key, k -> new ConcurrentLinkedQueue<>());
                 sendQueue.add(dataPackage);
-                if ((key.interestOps() & SelectionKey.OP_WRITE) == 0) {
+                if (!sendingStateHashMap.get(key).get() && ((key.interestOps() & SelectionKey.OP_WRITE) == 0)) {
                     eventQueue.add(() -> {
                         if (key.isValid()) {
                             key.interestOps(key.interestOps() | SelectionKey.OP_WRITE);
@@ -260,8 +278,9 @@ public class Link extends Thread{
         }
         if (dataPackage.getAppendState() == DataPackage.APPEND_1) {
             DataPackage DP = dataPackage.getAppendDataPackage();
-            if (DP.getTaskId() == null) {
-                DP.setTaskId(dataPackage.getTaskId());
+            String taskId = dataPackage.getTaskId();
+            if (!taskId.equals(DP.getTaskId())) {
+                DP.setTaskId(taskId);
             }
             switch (DP) {
                 case CommandPackage commandPackage -> netClient.putCommandPackage(commandPackage);
@@ -283,13 +302,16 @@ public class Link extends Thread{
         }
     }
     public void sendFinish(SelectionKey key) {
-        if (!cancelSet.contains(key) && key.isValid()) {
-            eventQueue.add(() -> {
-                if (key.isValid()) {
-                    key.interestOps(key.interestOps() | SelectionKey.OP_WRITE);
-                }
-            });
-            selector.wakeup();
+        if (key != null && key.isValid() && !cancelSet.contains(key)) {
+            sendingStateHashMap.get(key).set(false);
+            if ((sendHashMap.get(key) != null) && ((key.interestOps() & SelectionKey.OP_WRITE) == 0)) {
+                eventQueue.add(() -> {
+                    if (key.isValid()) {
+                        key.interestOps(key.interestOps() | SelectionKey.OP_WRITE);
+                    }
+                });
+                selector.wakeup();
+            }
         }
     }
     public void addDataPackage(DataPackage dataPackage) {

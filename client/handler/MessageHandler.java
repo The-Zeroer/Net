@@ -87,8 +87,9 @@ public class MessageHandler extends Handler{
             int dataSize = MDP.getDataSize();
             if (dataSize > 0) {
                 buffer = ByteBuffer.allocate(Math.min(dataSize, BUFFER_MAX_SIZE));
+                byte[] data = MDP.getData();
                 for (int residue = dataSize, writeCount = 0; residue > 0;residue -= writeCount, writeCount = 0) {
-                    buffer.put(MDP.getData(), dataSize - residue, Math.min(residue, buffer.remaining()));
+                    buffer.put(data, dataSize - residue, Math.min(residue, buffer.remaining()));
                     buffer.flip();
                     while (buffer.hasRemaining()) {
                         writeCount += channel.write(buffer);

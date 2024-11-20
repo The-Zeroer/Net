@@ -19,6 +19,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.ServerSocketChannel;
+import java.util.List;
 
 public class NetServer {
     private final Accept accept;
@@ -133,7 +134,7 @@ public class NetServer {
                         , DataPackage.TYPE_MESSAGE_ADDRESS, messagAddress.getBytes()));
             }
             case null -> {
-                NetLog.info("发送 [MessagePackage] 时,目标UID [$] 不存在", UID);
+                NetLog.debug("发送 [MessagePackage] 时,目标UID [$] 不存在", UID);
                 return false;
             }
             default -> NetLog.error(new IllegalStateException());
@@ -166,7 +167,7 @@ public class NetServer {
                         , DataPackage.TYPE_FILE_ADDRESS, fileAddress.getBytes()));
             }
             case null -> {
-                NetLog.info("发送 [FilePackage] 时,目标UID [$] 不存在", UID);
+                NetLog.debug("发送 [FilePackage] 时,目标UID [$] 不存在", UID);
                 return false;
             }
             default -> NetLog.error(new IllegalStateException());
@@ -182,6 +183,10 @@ public class NetServer {
     }
     public FilePackage getFilePackage() throws NetException {
         return (FilePackage) fileLink.getDataPackage();
+    }
+
+    public boolean isOnline(String UID) {
+        return linkTable.getCommandKeyByUID(UID) != null;
     }
 
     public void setFlow(long capacity, long rate) {

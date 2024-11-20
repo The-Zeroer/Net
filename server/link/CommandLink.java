@@ -43,7 +43,7 @@ public class CommandLink extends Link {
                     .setTime(buffer.getLong()).setDataSize(buffer.getInt());
             // 验证Token
             if (CDP.getWay() != DataPackage.WAY_LOGIN && CDP.getWay() != DataPackage.WAY_TOKEN_VERIFY
-                    && CDP.getWay() != DataPackage.WAY_HEART_BEAT && linkTable.getTokenByCommandKey(key) == null) {
+                    && CDP.getWay() != DataPackage.WAY_HEART_BEAT && linkTable.getToken(key) == null) {
                 NetLog.warn("连接 [$] 无Token,已断开", channel.getRemoteAddress());
                 cancelCommandLink(key);
                 return;
@@ -74,13 +74,15 @@ public class CommandLink extends Link {
                 }
                 CDP.setData(data);
             }
-            CDP.setSelectionKey(key).setUID(linkTable.getUIDByCommandKey(key));
+            CDP.setSelectionKey(key).setUID(linkTable.getUID(key));
 
             switch (CDP.getWay()) {
-                case DataPackage.WAY_HEART_BEAT -> {}
+                case DataPackage.WAY_HEART_BEAT -> {
+                    return;
+                }
 
                 case DataPackage.WAY_BUILD_LINK -> {
-                    String UID = linkTable.getUIDByCommandKey(key);
+                    String UID = linkTable.getUID(key);
                     switch (CDP.getType()) {
                         case DataPackage.TYPE_MESSAGE_ADDRESS -> {
                             putDataPackage(key, new CommandPackage(DataPackage.WAY_BUILD_LINK
@@ -98,7 +100,7 @@ public class CommandLink extends Link {
                 }
 
                 case DataPackage.WAY_TOKEN_VERIFY -> {
-                    String serverToken = linkTable.getTokenByCommandKey(key);
+                    String serverToken = linkTable.getToken(key);
                     String clientToken = new String(CDP.getData());
                     if (serverToken != null && serverToken.equals(clientToken)) {
                         NetLog.info("重新建立的连接 [$] Token验证成功", channel.getRemoteAddress());
@@ -136,8 +138,9 @@ public class CommandLink extends Link {
             int dataSize = CDP.getDataSize();
             if (dataSize > 0) {
                 buffer = ByteBuffer.allocate(Math.min(dataSize, BUFFER_MAX_SIZE));
+                byte[] data = CDP.getData();
                 for (int residue = dataSize, writeCount = 0; residue > 0;residue -= writeCount, writeCount = 0) {
-                    buffer.put(CDP.getData(), dataSize - residue, Math.min(residue, buffer.remaining()));
+                    buffer.put(data, dataSize - residue, Math.min(residue, buffer.remaining()));
                     buffer.flip();
                     while (buffer.hasRemaining()) {
                         writeCount += channel.write(buffer);
@@ -148,6 +151,7 @@ public class CommandLink extends Link {
             NetLog.debug("发送 {$} 成功", CDP);
         } catch (IOException e) {
             NetLog.error("发送 {$} 失败", CDP);
+            NetLog.error(e);
             cancelCommandLink(key);
         } finally {
             sendFinish(key);

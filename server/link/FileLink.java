@@ -54,7 +54,7 @@ public class FileLink extends Link {
             }
             buffer.flip();
             FDP.setWay(buffer.get()).setType(buffer.get()).setAppendState(buffer.get()).setTime(buffer.getLong());
-            if (FDP.getWay() != DataPackage.WAY_TOKEN_VERIFY && linkTable.getTokenByMessageKey(key) == null) {
+            if (FDP.getWay() != DataPackage.WAY_TOKEN_VERIFY && linkTable.getToken(key) == null) {
                 NetLog.warn("连接 [$] (FileLink) 无Token,已断开", socketChannel.getRemoteAddress());
                 canelFileLink(key);
                 return;
@@ -68,7 +68,7 @@ public class FileLink extends Link {
             buffer.flip();
             buffer.get(taskIdBytes);
             FDP.setTaskId(new String(taskIdBytes));
-            FDP.setSelectionKey(key).setUID(linkTable.getUIDByFileKey(key));
+            FDP.setSelectionKey(key).setUID(linkTable.getUID(key));
 
             if (FDP.getWay() == DataPackage.WAY_TOKEN_VERIFY) {
                 if (dataSize > 0) {
@@ -96,7 +96,7 @@ public class FileLink extends Link {
                                 , ((SocketChannel)fileKey.channel()).getRemoteAddress(), socketChannel.getRemoteAddress());
                         canelFileLink(fileKey);
                     }
-                    String UID = linkTable.getUIDByCommandKey(commandKey);
+                    String UID = linkTable.getUID(commandKey);
                     linkTable.addFileKey(commandKey, key);
                     linkTable.setFileLinkStata(UID, LinkTable.VERIFY);
                     while (true) {
@@ -109,7 +109,7 @@ public class FileLink extends Link {
                         }
                     }
                 } else {
-                    NetLog.warn("连接 [$] (FileLink) 已断开,Token错误", socketChannel.getRemoteAddress());
+                    NetLog.warn("连接 [$] (FileLink) 已断开,Token验证失败", socketChannel.getRemoteAddress());
                     canelFileLink(key);
                 }
             } else {
@@ -160,10 +160,16 @@ public class FileLink extends Link {
             NetLog.debug("发送 {$} 成功", FDP);
         } catch (IOException e) {
             NetLog.error("发送 {$} 失败", FDP);
+            NetLog.error(e);
             canelFileLink(key);
         } finally {
             sendFinish(key);
         }
+    }
+
+    @Override
+    protected void extraDisposeTimeOutLink(SelectionKey key) {
+        linkTable.removeFileKey(key);
     }
 
     private void canelFileLink(SelectionKey key) {

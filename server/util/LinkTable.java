@@ -28,6 +28,15 @@ public class LinkTable {
     private MessageLink messageLink;
     private FileLink fileLink;
 
+    // 未连接
+    public static final byte LINK_1 = 1;
+    // 连接中
+    public static final byte LINK_2 = 2;
+    // 已验证
+    public static final byte VERIFY = 3;
+    // 已就绪
+    public static final byte READY = 4;
+
     public LinkTable() {
         keyHashMap = new ConcurrentHashMap<>();
         tokenHashMap = new ConcurrentHashMap<>();
@@ -46,7 +55,7 @@ public class LinkTable {
 
     public void register(SelectionKey commandKey, String UID, String token) {
         ConcurrentHashMap<String, SelectionKey> tempkeyMap = new ConcurrentHashMap<>(){{put("commandKey", commandKey);}};
-        ConcurrentHashMap<String, String> temptokenMap = new ConcurrentHashMap<>(){{put("UID", UID);put("token", token);}};
+        ConcurrentHashMap<String, String> temptokenMap = new ConcurrentHashMap<>(){{put("UID", UID);put("Token", token);}};
         keyHashMap.put(UID, tempkeyMap);
         keyHashMap.put(token, tempkeyMap);
         tokenHashMap.put(commandKey, temptokenMap);
@@ -75,7 +84,7 @@ public class LinkTable {
         if (tempkeyMap != null) {
             SelectionKey commandKey = tempkeyMap.get("commandKey");
             if (commandKey != null) {
-                String token = getTokenByCommandKey(commandKey);
+                String token = getToken(commandKey);
                 if (token != null) {
                     keyHashMap.remove(token);
                 }
@@ -183,24 +192,11 @@ public class LinkTable {
         }
     }
 
-    public String getUIDByCommandKey(SelectionKey commandKey) {
-        return getUIDOrToken(commandKey, "UID");
+    public String getUID(SelectionKey key) {
+        return getUIDOrToken(key, "UID");
     }
-    public String getUIDByMessageKey(SelectionKey messageKey) {
-        return getUIDOrToken(messageKey, "UID");
-    }
-    public String getUIDByFileKey(SelectionKey fileKey) {
-        return getUIDOrToken(fileKey, "UID");
-    }
-
-    public String getTokenByCommandKey(SelectionKey commandKey) {
-        return getUIDOrToken(commandKey, "token");
-    }
-    public String getTokenByMessageKey(SelectionKey messageKey) {
-        return getUIDOrToken(messageKey, "token");
-    }
-    public String getTokenByFileKey(SelectionKey fileKey) {
-        return getUIDOrToken(fileKey, "token");
+    public String getToken(SelectionKey key) {
+        return getUIDOrToken(key, "Token");
     }
 
     public SelectionKey getCommandKeyByUID(String UID) {
@@ -240,11 +236,13 @@ public class LinkTable {
         messageQueueMap.computeIfAbsent(UID, k -> new ConcurrentLinkedQueue<>()).add(messagePackage);
     }
     public MessagePackage getMessagePackage(String UID) {
-        MessagePackage messagePackage = messageQueueMap.get(UID).poll();
-        if (messagePackage == null) {
+        ConcurrentLinkedQueue<MessagePackage> queue = messageQueueMap.get(UID);
+        if (queue != null) {
+            return queue.poll();
+        } else {
             messageQueueMap.remove(UID);
+            return null;
         }
-        return messagePackage;
     }
     public boolean messageQueueEmpty(String UID) {
         return messageQueueMap.get(UID) == null;
@@ -256,11 +254,13 @@ public class LinkTable {
         return fileQueueMap.get(UID) == null;
     }
     public FilePackage getFilePackage(String UID) {
-        FilePackage filePackage = fileQueueMap.get(UID).poll();
-        if (filePackage == null) {
-            fileQueueMap.remove(UID);
+        ConcurrentLinkedQueue<FilePackage> queue = fileQueueMap.get(UID);
+        if (queue != null) {
+            return queue.poll();
+        } else {
+            messageQueueMap.remove(UID);
+            return null;
         }
-        return filePackage;
     }
 
     public CommandLink getCommandLink() {
@@ -279,15 +279,6 @@ public class LinkTable {
     public DataPackage getAppendDataPackage(String taskId) {
         return receiveHashMap.remove(taskId);
     }
-
-    // 未连接
-    public static final byte LINK_1 = 1;
-    // 连接中
-    public static final byte LINK_2 = 2;
-    // 已验证
-    public static final byte VERIFY = 3;
-    // 已就绪
-    public static final byte READY = 4;
 
     private SelectionKey getKey(String UIDOrToken, String name) {
         ConcurrentHashMap<String, SelectionKey> tempkeyMap = keyHashMap.get(UIDOrToken);

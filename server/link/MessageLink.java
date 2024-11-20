@@ -32,7 +32,7 @@ public class MessageLink extends Link {
             buffer.flip();
             MDP.setWay(buffer.get()).setType(buffer.get()).setAppendState(buffer.get())
                     .setTime(buffer.getLong()).setDataSize(buffer.getInt());
-            if (MDP.getWay() != DataPackage.WAY_TOKEN_VERIFY && linkTable.getTokenByMessageKey(key) == null) {
+            if (MDP.getWay() != DataPackage.WAY_TOKEN_VERIFY && linkTable.getToken(key) == null) {
                 NetLog.warn("连接 [$] (MessageLink) 无Token,已断开", channel.getRemoteAddress());
                 canelMessageLink(key);
                 return;
@@ -65,19 +65,19 @@ public class MessageLink extends Link {
                 }
                 MDP.setData(data);
             }
-            MDP.setSelectionKey(key).setUID(linkTable.getUIDByMessageKey(key));
+            MDP.setSelectionKey(key).setUID(linkTable.getUID(key));
 
             if (MDP.getWay() == DataPackage.WAY_TOKEN_VERIFY) {
                 String token = new String(MDP.getData());
                 SelectionKey commandKey = linkTable.getCommandKeyByToken(token);
-                SelectionKey messageKey = linkTable.getMessageKeyByToken(token);
                 if (commandKey != null) {
+                    SelectionKey messageKey = linkTable.getMessageKeyByToken(token);
                     if (messageKey != null) {
                         NetLog.warn("连接 [$] (MessageLink) 已替换为 [$] ,原连接已断开"
                                 , ((SocketChannel)messageKey.channel()).getRemoteAddress(), channel.getRemoteAddress());
                         canelMessageLink(messageKey);
                     }
-                    String UID = linkTable.getUIDByCommandKey(commandKey);
+                    String UID = linkTable.getUID(commandKey);
                     linkTable.addMessageKey(commandKey, key);
                     linkTable.setMessageLinkStata(UID, LinkTable.VERIFY);
                     while (true) {
@@ -90,7 +90,7 @@ public class MessageLink extends Link {
                         }
                     }
                 } else {
-                    NetLog.warn("连接 [$] (MessageLink) 已断开,Token错误", channel.getRemoteAddress());
+                    NetLog.warn("连接 [$] (MessageLink) 已断开,Token验证失败", channel.getRemoteAddress());
                     canelMessageLink(key);
                 }
             } else {
@@ -122,8 +122,9 @@ public class MessageLink extends Link {
             int dataSize = MDP.getDataSize();
             if (dataSize > 0) {
                 buffer = ByteBuffer.allocate(Math.min(dataSize, BUFFER_MAX_SIZE));
+                byte[] data = MDP.getData();
                 for (int residue = dataSize, writeCount = 0; residue > 0;residue -= writeCount, writeCount = 0) {
-                    buffer.put(MDP.getData(), dataSize - residue, Math.min(residue, buffer.remaining()));
+                    buffer.put(data, dataSize - residue, Math.min(residue, buffer.remaining()));
                     buffer.flip();
                     while (buffer.hasRemaining()) {
                         writeCount += channel.write(buffer);
@@ -134,10 +135,16 @@ public class MessageLink extends Link {
             NetLog.debug("发送 {$} 成功", MDP);
         } catch (IOException e) {
             NetLog.error("发送 {$} 失败", MDP);
+            NetLog.error(e);
             canelMessageLink(key);
         } finally {
             sendFinish(key);
         }
+    }
+
+    @Override
+    protected void extraDisposeTimeOutLink(SelectionKey key) {
+        linkTable.removeMessageKey(key);
     }
 
     private void canelMessageLink(SelectionKey key) {

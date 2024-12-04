@@ -1,5 +1,7 @@
 package net.util;
 
 public interface TransferSchedule {
-    public void showTransferSchedule(long gross, long residue);
+    public void setSize(long size);
+    public void updateSchedule(long portion);
+    public void transFinish();
 }

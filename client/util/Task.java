@@ -4,28 +4,31 @@ import net.datapackage.DataPackage;
 
 public abstract class Task implements Runnable{
     private final Object lock = new Object();
-    private final String taskId;
-    private DataPackage data;
+    protected final String taskId;
+    private DataPackage dataPackage;
 
+    public Task() {
+        this.taskId = NetTool.produceTaskId();
+    }
     public Task(String taskId) {
         this.taskId = taskId;
     }
 
     public abstract void run();
 
-    public DataPackage waitData(int seconds) {
+    public DataPackage waitDataPackage(int seconds) {
         synchronized (lock) {
             try {
                 lock.wait(seconds * 1000L);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            return data;
+            return dataPackage;
         }
     }
-    public void handleData(DataPackage data) {
+    public void handleDataPackage(DataPackage dataPackage) {
         synchronized (lock) {
-            this.data = data;
+            this.dataPackage = dataPackage;
             lock.notifyAll();
         }
     }

@@ -11,7 +11,9 @@ import net.log.NetLog;
 import java.io.IOException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -53,20 +55,23 @@ public class LinkTable {
         this.fileLink = fileLink;
     }
 
-    public void register(SelectionKey commandKey, String UID, String token) {
+    public boolean register(SelectionKey commandKey, String UID, String token) {
         ConcurrentHashMap<String, SelectionKey> tempkeyMap = new ConcurrentHashMap<>(){{put("commandKey", commandKey);}};
         ConcurrentHashMap<String, String> temptokenMap = new ConcurrentHashMap<>(){{put("UID", UID);put("Token", token);}};
-        keyHashMap.put(UID, tempkeyMap);
+        if (keyHashMap.putIfAbsent(UID, tempkeyMap) != null) {
+            return false;
+        }
         keyHashMap.put(token, tempkeyMap);
         tokenHashMap.put(commandKey, temptokenMap);
-        setMessageLinkStata(UID, LinkTable.LINK_1);
-        setFileLinkStata(UID, LinkTable.LINK_1);
+        messageLinkStateHashMap.put(UID, LinkTable.LINK_1);
+        fileLinkStateHashMap.put(UID, LinkTable.LINK_1);
         try {
             NetLog.info("UID [$] 已注册,并绑定连接 [$] (CommandLink) 及Token"
                     , UID, ((SocketChannel)commandKey.channel()).getRemoteAddress());
         } catch (IOException e) {
             NetLog.error(e);
         }
+        return true;
     }
     public void cancel(SelectionKey commandKey) {
         ConcurrentHashMap<String, String> temptokenMap = tokenHashMap.remove(commandKey);
@@ -120,6 +125,72 @@ public class LinkTable {
                 tokenHashMap.remove(fileKey);
             }
             NetLog.info("UID [$] 已注销", UID);
+        }
+    }
+    public void updateLink(SelectionKey oldKey, SelectionKey newKey) {
+        ConcurrentHashMap<String, String> temptokenMap = tokenHashMap.remove(oldKey);
+        if (temptokenMap != null) {
+            String UID = temptokenMap.get("UID");
+            String token = temptokenMap.get("Token");
+            String oldAddress, newAddress;
+            try {
+                oldAddress = ((SocketChannel)oldKey.channel()).getRemoteAddress().toString();
+            } catch (IOException e) {
+                oldAddress = "未知,已被关闭";
+            }
+            try {
+                newAddress = ((SocketChannel)newKey.channel()).getRemoteAddress().toString();
+            } catch (IOException e) {
+                newAddress = "未知,已被关闭";
+            }
+            if (UID != null) {
+                messageLinkStateHashMap.put(UID, LinkTable.LINK_1);
+                fileLinkStateHashMap.put(UID, LinkTable.LINK_1);
+                ConcurrentHashMap<String, SelectionKey> tempkeyMap = keyHashMap.remove(UID);
+                if (tempkeyMap != null) {
+                    SelectionKey commandKey = tempkeyMap.get("commandKey");
+                    if (commandKey != null) {
+                        try {
+                            NetLog.info("连接 [$] (CommandLink) 已解除关联UID [$]"
+                                    , ((SocketChannel)commandKey.channel()).getRemoteAddress(), UID);
+                        } catch (IOException e) {
+                            NetLog.info("连接 [未知,已被关闭] (CommandLink) 已解除关联UID [$]", UID);
+                        }
+                        commandLink.cancel(commandKey);
+                        tokenHashMap.remove(commandKey);
+                    }
+                    SelectionKey messageKey = tempkeyMap.get("messageKey");
+                    if (messageKey != null) {
+                        try {
+                            NetLog.info("连接 [$] (MessageLink) 已解除关联UID [$]"
+                                    , ((SocketChannel)messageKey.channel()).getRemoteAddress(), UID);
+                        } catch (IOException e) {
+                            NetLog.info("连接 [未知,已被关闭] (MessageLink) 已解除关联UID [$]", UID);
+                        }
+                        messageLink.cancel(messageKey);
+                        tokenHashMap.remove(messageKey);
+                    }
+                    SelectionKey fileKey = tempkeyMap.get("fileKey");
+                    if (fileKey != null) {
+                        try {
+                            NetLog.info("连接 [$] (FileLink) 已解除关联UID [$]"
+                                    , ((SocketChannel)fileKey.channel()).getRemoteAddress(), UID);
+                        } catch (IOException e) {
+                            NetLog.info("连接 [未知,已被关闭] (FileLink) 已解除关联UID [$]", UID);
+                        }
+                        fileLink.cancel(fileKey);
+                        tokenHashMap.remove(fileKey);
+                    }
+                }
+                if (token != null) {
+                    ConcurrentHashMap<String, SelectionKey> newTempkeyMap = new ConcurrentHashMap<>(){{put("commandKey", newKey);}};
+                    ConcurrentHashMap<String, String> newTemptokenMap = new ConcurrentHashMap<>(){{put("UID", UID);put("Token", token);}};
+                    keyHashMap.put(UID, newTempkeyMap);
+                    keyHashMap.put(token, newTempkeyMap);
+                    tokenHashMap.put(newKey, newTemptokenMap);
+                    NetLog.info("[$] 已更新连接 [$] -> [$]", UID, oldAddress, newAddress);
+                }
+            }
         }
     }
 
@@ -197,6 +268,13 @@ public class LinkTable {
     }
     public String getToken(SelectionKey key) {
         return getUIDOrToken(key, "Token");
+    }
+    public Set<String> getAllUID() {
+        Set<String> UIDSet = new HashSet<>();
+        for (ConcurrentHashMap<String, String> temptokenMap : tokenHashMap.values()) {
+            UIDSet.add(temptokenMap.get("UID"));
+        }
+        return UIDSet;
     }
 
     public SelectionKey getCommandKeyByUID(String UID) {

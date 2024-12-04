@@ -57,6 +57,13 @@ public abstract class DataPackage {
     public byte getAppendState() {
         return appendState;
     }
+    public String getContent() {
+        if (data != null) {
+            return new String(data);
+        } else {
+            return "";
+        }
+    }
 
     public byte getWay() {
         return way;
@@ -145,6 +152,12 @@ public abstract class DataPackage {
     public static final byte WAY_CHANGE_DATA = 12;
     // 重置数据
     public static final byte WAY_RESET_DATA = 13;
+    // 添加数据
+    public static final byte WAY_ADD_DATA = 14;
+    // 删除数据
+    public static final byte WAY_DELETE_DATA = 15;
+    // 更新数据
+    public static final byte WAY_UPDATE_DATA = 16;
     // 发送聊天消息
     public static final byte WAY_SEND_MESSAGE = 20;
     // 请求聊天消息
@@ -177,7 +190,7 @@ public abstract class DataPackage {
     // 图标资源
     public static final byte TYPE_RESOURCE_ICON = 10;
     // 背景资源
-    public static final byte TYPE_RESOURCE_BACKDROP = 11;
+    public static final byte TYPE_RESOURCE_BACKGROUND = 11;
     // 音频资源
     public static final byte TYPE_RESOURCE_AUDIO = 12;
     // 头像原图
@@ -200,12 +213,31 @@ public abstract class DataPackage {
     public static final byte TYPE_ORG_STRUCTURE = 40;
     // 所有用户信息
     public static final byte TYPE_ALLUSER_INFO = 41;
+    // 用户
+    public static final byte TYPE_USER = 90;
+    // 管理员
+    public static final byte TYPE_ADMIN = 91;
+    // 考勤
+    public static final byte TYPE_ATTENDANCE = 95;
     // 消息地址
     public static final byte TYPE_MESSAGE_ADDRESS = 100;
     // 文件地址
     public static final byte TYPE_FILE_ADDRESS = 101;
     // 更新文件
     public static final byte TYPE_UPDATE_FILE = 120;
+
+    /**
+     * 未发送,正在等待的数据包
+     */
+    public static final byte SEND_1 = 1;
+    /**
+     * 发送中的数据包
+     */
+    public static final byte SEND_2 = 2;
+    /**
+     * 已发送的数据包
+     */
+    public static final byte SEND_3 = 3;
 
     // 被附加
     public static final byte APPEND_1 = 1;

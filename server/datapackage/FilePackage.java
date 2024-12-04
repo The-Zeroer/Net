@@ -13,29 +13,18 @@ public class FilePackage extends DataPackage {
     private File file;
 
     public FilePackage() {}
-
-    public FilePackage(byte way, byte[] data) {
-        this(way, TYPE_TEXT, data);
+    public FilePackage(File file) throws FileNotFoundException {
+        this(FilePackage.WAY_SEND_DATA, FilePackage.TYPE_FILE, file);
     }
-
-    public FilePackage(byte way, byte type, byte[] data) {
+    public FilePackage(byte way, byte type, File file) throws FileNotFoundException {
         this.way = way;
         this.type = type;
         this.time = System.currentTimeMillis();
-        if (data != null) {
-            this.data = data;
-            dataSize += data.length;
-        }
-    }
-
-    public FilePackage(byte way, byte type, File file) {
-        this.way = way;
-        this.type = type;
-        this.time = System.currentTimeMillis();
-
         if (file != null && file.exists()) {
             this.file = file;
             fileSize = file.length();
+        } else {
+            throw new FileNotFoundException();
         }
     }
 

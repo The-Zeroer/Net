@@ -127,10 +127,10 @@ public class NetClient {
             }
         }
     }
-    public void setFileSendSchedule(String taskId, TransferSchedule transferSchedule) {
+    public void getFileSendSchedule(String taskId, TransferSchedule transferSchedule) {
         fileHandler.putSendTransferSchedule(taskId, transferSchedule);
     }
-    public void setFileReceiveSchedule(String taskId, TransferSchedule transferSchedule) {
+    public void getFileReceiveSchedule(String taskId, TransferSchedule transferSchedule) {
         fileHandler.putReceiveTransferSchedule(taskId, transferSchedule);
     }
 

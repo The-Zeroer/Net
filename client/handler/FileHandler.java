@@ -78,14 +78,14 @@ public class FileHandler extends Handler {
                 fileChannel = raf.getChannel();
                 TransferSchedule transferSchedule = receiveScheduleHashMap.remove(FDP.getTaskId());
                 if (transferSchedule != null) {
-                    transferSchedule.showTransferSchedule(fileSize, fileSize);
+                    transferSchedule.setSize(fileSize);
                     for (long residue = fileSize, readCount = 0; residue > 0; residue -= readCount) {
                         readCount = fileChannel.transferFrom(socketChannel, fileSize - residue, residue);
                         if (readCount > 0) {
-                            transferSchedule.showTransferSchedule(fileSize, residue);
+                            transferSchedule.updateSchedule(readCount);
                         }
                     }
-                    transferSchedule.showTransferSchedule(fileSize, 0);
+                    transferSchedule.transFinish();
                 } else {
                     for (long residue = fileSize, readCount = 0; residue > 0; residue -= readCount) {
                         readCount = fileChannel.transferFrom(socketChannel, fileSize - residue, residue);
@@ -151,16 +151,16 @@ public class FileHandler extends Handler {
                 raf = new RandomAccessFile(FDP.getFile(), "r");
                 fileChannel = raf.getChannel();
                 long fileSize = FDP.getFileSize();
-                TransferSchedule transferSchedule = receiveScheduleHashMap.remove(FDP.getTaskId());
+                TransferSchedule transferSchedule = sendScheduleHashMap.remove(FDP.getTaskId());
                 if (transferSchedule != null) {
-                    transferSchedule.showTransferSchedule(fileSize, fileSize);
+                    transferSchedule.setSize(fileSize);
                     for (long residue = fileSize, writeCount = 0; residue > 0; residue -= writeCount) {
                         writeCount = fileChannel.transferTo(fileSize - residue, residue, socketChannel);
                         if (writeCount > 0) {
-                            transferSchedule.showTransferSchedule(fileSize, residue);
+                            transferSchedule.updateSchedule(writeCount);
                         }
                     }
-                    transferSchedule.showTransferSchedule(fileSize, 0);
+                    transferSchedule.transFinish();
                 } else {
                     for (long residue = fileSize, writeCount = 0; residue > 0; residue -= writeCount) {
                         writeCount = fileChannel.transferTo(fileSize - residue, residue, socketChannel);

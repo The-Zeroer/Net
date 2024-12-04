@@ -75,12 +75,11 @@ public class CommandLink extends Link {
                 CDP.setData(data);
             }
             CDP.setSelectionKey(key).setUID(linkTable.getUID(key));
+            if (CDP.getWay() != DataPackage.WAY_HEART_BEAT) {
+                NetLog.debug("接收 {$}", CDP);
+            }
 
             switch (CDP.getWay()) {
-                case DataPackage.WAY_HEART_BEAT -> {
-                    return;
-                }
-
                 case DataPackage.WAY_BUILD_LINK -> {
                     String UID = linkTable.getUID(key);
                     switch (CDP.getType()) {
@@ -100,10 +99,11 @@ public class CommandLink extends Link {
                 }
 
                 case DataPackage.WAY_TOKEN_VERIFY -> {
-                    String serverToken = linkTable.getToken(key);
-                    String clientToken = new String(CDP.getData());
-                    if (serverToken != null && serverToken.equals(clientToken)) {
+                    String clientToken = CDP.getContent();
+                    SelectionKey commandKey = linkTable.getCommandKeyByToken(clientToken);
+                    if (commandKey != null) {
                         NetLog.info("重新建立的连接 [$] Token验证成功", channel.getRemoteAddress());
+                        linkTable.updateLink(commandKey, key);
                     } else {
                         NetLog.warn("重新建立的连接 [$] Token验证失败,已断开", channel.getRemoteAddress());
                         cancelCommandLink(key);
@@ -114,8 +114,6 @@ public class CommandLink extends Link {
                     addDataPackage(CDP);
                 }
             }
-
-            NetLog.debug("接收 {$}", CDP);
         } catch (IOException e) {
             cancelCommandLink(key);
         } finally {

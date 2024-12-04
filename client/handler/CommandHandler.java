@@ -80,7 +80,7 @@ public class CommandHandler extends Handler{
 
             switch (CDP.getWay()) {
                 case DataPackage.WAY_TOKEN_VERIFY -> {
-                    linkTable.putToken(new String(CDP.getData()));
+                    linkTable.putToken(CDP.getContent());
                     NetLog.info("获得Token");
                 }
 
@@ -89,7 +89,7 @@ public class CommandHandler extends Handler{
                         switch (CDP.getType()) {
                             case DataPackage.TYPE_MESSAGE_ADDRESS -> {
                                 if (linkTable.getMessageKey() == null) {
-                                    String[] address = new String(CDP.getData()).split(":");
+                                    String[] address = CDP.getContent().split(":");
                                     SocketChannel socketChannel = SocketChannel.open(
                                             new InetSocketAddress(address[0], Integer.parseInt(address[1])));
                                     link.register(socketChannel, messageHandler);
@@ -115,7 +115,7 @@ public class CommandHandler extends Handler{
                             }
                             case DataPackage.TYPE_FILE_ADDRESS -> {
                                 if (linkTable.getFileKey() == null) {
-                                    String[] address = new String(CDP.getData()).split(":");
+                                    String[] address = CDP.getContent().split(":");
                                     SocketChannel socketChannel = SocketChannel.open(
                                             new InetSocketAddress(address[0], Integer.parseInt(address[1])));
                                     link.register(socketChannel, fileHandler);

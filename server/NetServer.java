@@ -19,7 +19,9 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.ServerSocketChannel;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 public class NetServer {
     private final Accept accept;
@@ -42,7 +44,7 @@ public class NetServer {
         fileLink.setName("FileLink");
         linkTable.setLink(commandLink, messageLink, fileLink);
         messageLink.setHeartBeatInterval(300);
-        fileLink.setHeartBeatInterval(600);
+        fileLink.setHeartBeatInterval(60);
     }
 
     public void bindCommandPort(int port) throws IOException {
@@ -84,11 +86,15 @@ public class NetServer {
         accept.start();
     }
 
-    public void register(SelectionKey key, String UID, String addition) {
+    public boolean register(SelectionKey key, String UID, String addition) {
         String token = NetTool.getToken(key, addition);
-        linkTable.register(key, UID, token);
-        commandLink.putDataPackage(key, new CommandPackage(DataPackage.WAY_TOKEN_VERIFY, token.getBytes())
-                .setSelectionKey(key).setUID(UID));
+        if (linkTable.register(key, UID, token)) {
+            commandLink.putDataPackage(key, new CommandPackage(DataPackage.WAY_TOKEN_VERIFY, token.getBytes())
+                    .setSelectionKey(key).setUID(UID));
+            return true;
+        } else {
+            return false;
+        }
     }
     public void cancel(String UID) {
         linkTable.cancel(UID);
@@ -187,6 +193,9 @@ public class NetServer {
 
     public boolean isOnline(String UID) {
         return linkTable.getCommandKeyByUID(UID) != null;
+    }
+    public Set<String> getOnlineUID() {
+        return linkTable.getAllUID();
     }
 
     public void setFlow(long capacity, long rate) {

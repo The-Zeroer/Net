@@ -10,15 +10,14 @@ public class MessagePackage extends DataPackage {
     private byte[] sender;
     private byte[] receiver;
 
-    private static String hostAddress = "0.0.0.0";
-
-//    static {
-//        try {
-//            hostAddress = InetAddress.getLocalHost().getHostAddress();
-//        } catch (UnknownHostException e) {
-//            hostAddress = "0.0.0.0";
-//        }
-//    }
+    private static String hostAddress;
+    static {
+        try {
+            hostAddress = InetAddress.getLocalHost().getHostAddress();
+        } catch (UnknownHostException e) {
+            hostAddress = "0.0.0.0";
+        }
+    }
 
     public MessagePackage() {}
 
@@ -83,13 +82,6 @@ public class MessagePackage extends DataPackage {
         this.receiver = receiver.getBytes();
         receiverLenght = (short) this.receiver.length;
         return this;
-    }
-    public String getContent() {
-        if (data != null) {
-            return new String(data);
-        } else {
-            return "";
-        }
     }
     public byte[] getSenderBytes() {
         return sender;

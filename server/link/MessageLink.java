@@ -66,9 +66,10 @@ public class MessageLink extends Link {
                 MDP.setData(data);
             }
             MDP.setSelectionKey(key).setUID(linkTable.getUID(key));
+            NetLog.debug("接收 {$}", MDP);
 
             if (MDP.getWay() == DataPackage.WAY_TOKEN_VERIFY) {
-                String token = new String(MDP.getData());
+                String token = MDP.getContent();
                 SelectionKey commandKey = linkTable.getCommandKeyByToken(token);
                 if (commandKey != null) {
                     SelectionKey messageKey = linkTable.getMessageKeyByToken(token);
@@ -96,8 +97,6 @@ public class MessageLink extends Link {
             } else {
                 addDataPackage(MDP);
             }
-
-            NetLog.debug("接收 {$}", MDP);
         } catch (IOException e) {
             canelMessageLink(key);
         } finally {

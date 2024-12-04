@@ -69,6 +69,7 @@ public class FileLink extends Link {
             buffer.get(taskIdBytes);
             FDP.setTaskId(new String(taskIdBytes));
             FDP.setSelectionKey(key).setUID(linkTable.getUID(key));
+            NetLog.debug("接收 {$}", FDP);
 
             if (FDP.getWay() == DataPackage.WAY_TOKEN_VERIFY) {
                 if (dataSize > 0) {
@@ -87,7 +88,7 @@ public class FileLink extends Link {
                     }
                     FDP.setDataSize(dataSize).setData(data);
                 }
-                String token = new String(FDP.getData());
+                String token = FDP.getContent();
                 SelectionKey commandKey = linkTable.getCommandKeyByToken(token);
                 SelectionKey fileKey = linkTable.getFileKeyByToken(token);
                 if (commandKey != null) {
@@ -122,8 +123,6 @@ public class FileLink extends Link {
                 FDP.setFile(tempFile).setFileSize(fileSize);
                 addDataPackage(FDP);
             }
-
-            NetLog.debug("接收 {$}", FDP);
         } catch (IOException e) {
             canelFileLink(key);
         } finally {

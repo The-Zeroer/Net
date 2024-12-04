@@ -185,8 +185,8 @@ public class Link extends Thread{
                             for (int i = 0; linkTable.getCommandKey() == null && i < 100; i++) {
                                 NetTool.sleep();
                             }
-                            putDataPackage(linkTable.getCommandKey()
-                                    , new CommandPackage(DataPackage.WAY_TOKEN_VERIFY, linkTable.getToken().getBytes()));
+                            putDataPackage(linkTable.getCommandKey(), new CommandPackage
+                                    (DataPackage.WAY_TOKEN_VERIFY, linkTable.getToken().getBytes()));
                         } else {
                             linkTable.removeToken();
                             addException(new AgainLinkTimeOutException());
@@ -220,8 +220,8 @@ public class Link extends Thread{
                             NetTool.sleep();
                         }
                         if (linkTable.getCommandKey() != null && linkTable.getToken() != null) {
-                            putDataPackage(linkTable.getCommandKey()
-                                    , new CommandPackage(DataPackage.WAY_BUILD_LINK, DataPackage.TYPE_FILE_ADDRESS));
+                            putDataPackage(linkTable.getCommandKey(), new CommandPackage
+                                    (DataPackage.WAY_BUILD_LINK, DataPackage.TYPE_FILE_ADDRESS));
                         }
                     } else {
                         NetLog.info("服务器主动关闭了连接 [FileLink]");
@@ -319,17 +319,12 @@ public class Link extends Thread{
             DataPackage tempDataPackage = receiveHashMap.remove(dataPackage.getTaskId());
             if (tempDataPackage != null) {
                 if (tempDataPackage.getAppendState() == DataPackage.APPEND_1) {
-                    tempDataPackage.appendDataPackage(dataPackage);
-                    receiveQueue.add(tempDataPackage);
-                    synchronized (receiveLock) {
-                        receiveLock.notify();
-                    }
+                    receiveQueue.add(tempDataPackage.appendDataPackage(dataPackage));
                 } else {
-                    dataPackage.appendDataPackage(tempDataPackage);
-                    receiveQueue.add(dataPackage);
-                    synchronized (receiveLock) {
-                        receiveLock.notify();
-                    }
+                    receiveQueue.add(dataPackage.appendDataPackage(tempDataPackage));
+                }
+                synchronized (receiveLock) {
+                    receiveLock.notify();
                 }
             } else {
                 receiveHashMap.put(dataPackage.getTaskId(), dataPackage);

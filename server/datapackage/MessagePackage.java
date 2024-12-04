@@ -60,13 +60,6 @@ public class MessagePackage extends DataPackage {
         receiverLenght = (short) this.receiver.length;
         return this;
     }
-    public String getContent() {
-        if (data != null) {
-            return new String(data);
-        } else {
-            return "";
-        }
-    }
     public byte[] getSenderBytes() {
         return sender;
     }

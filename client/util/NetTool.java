@@ -57,6 +57,9 @@ public class NetTool {
     }
 
     public static void moveFile(File srcFile, File destFile) throws IOException {
+        if (srcFile.equals(destFile)) {
+            return;
+        }
         FileChannel srcChannel = null, destChannel = null;
         FileOutputStream fos = null;
         FileInputStream fis = null;
